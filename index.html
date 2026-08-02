@@ -1532,8 +1532,8 @@ function exportTrollEngineLua() {
     const isLane = (t.target||'').startsWith('lane');
     const mod = isLane ? t.modifier + t.target.substr(4) : t.modifier;
     let arg = '';
-    if(t.target === 'player') arg = ', 1';
-    else if(t.target === 'opponent') arg = ', 0';
+    if(t.target === 'player') arg = ', 0';
+    else if(t.target === 'opponent') arg = ', 1';
 
     lua += `    -- Track: ${t.name || mod} [${t.target || 'both'}]\n`;
 
@@ -1731,8 +1731,8 @@ function parseNumberish(s){
 function resolveTargetFromPlayerArg(arg){
   if(arg == null || arg === '') return 'both';
   const a = String(arg).trim();
-  if(a === '0' || a === 'false') return 'opponent';
-  if(a === '1' || a === 'true') return 'player';
+  if(a === '0' || a === 'false') return 'player';
+  if(a === '1' || a === 'true') return 'opponent';
   if(a === '-1') return 'both';
   return 'both';
 }
@@ -1925,8 +1925,8 @@ function exportTrollEngineHScript() {
     const isLane = (t.target||'').startsWith('lane');
     const mod = isLane ? t.modifier + t.target.substr(4) : t.modifier;
     let playerArg = '';
-    if(t.target === 'player') playerArg = ', 1';
-    else if(t.target === 'opponent') playerArg = ', 0';
+    if(t.target === 'player') playerArg = ', 0';
+    else if(t.target === 'opponent') playerArg = ', 1';
 
     hscript += `  // Track: ${t.name || mod} [${t.target || 'both'}]\n`;
 
