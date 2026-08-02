@@ -52,7 +52,7 @@ HOW TO USE MODCHART EDITOR:
 8. Preview the receptors in the top canvas while scrubbing or playing.
 9. Export:
    - **Lua** → drop into your Troll Engine chart as a script
-   - **HScript** → alternative script format (probably not working i think, still in the works just to make it fully downloadable i think)
+   - **HScript** → alternative script format (probably not working i think, still in the works just to make it fully functionable i think, thats probably why, i think im using the troll-slaiyers version of troll engine instead of the riconuts version i think)
    - **JSON** → save / share the sequence data
 
 ### Keyboard shortcuts
