@@ -51,7 +51,7 @@ HOW TO USE MODCHART EDITOR:
 7. Use the continuous panel if you want a modifier that runs every frame between two steps.
 8. Preview the receptors in the top canvas while scrubbing or playing.
 9. Export:
-   - **Lua** → drop into your Troll Engine chart as a script
+   - **Lua** → drop into your Troll Engine modchart as a script
    - **HScript** → alternative script format (probably not working i think, still in the works just to make it fully functionable i think, thats probably why, i think im using the troll-slaiyers version of troll engine instead of the riconuts version i think)
    - **JSON** → save / share the sequence data
 
