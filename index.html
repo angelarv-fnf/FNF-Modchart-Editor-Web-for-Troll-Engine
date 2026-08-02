@@ -726,7 +726,7 @@ function computeReceptor(engine, player, data, beat, timeSec){
   const os = mod("opponentSwap");
   if(os !== 0){
     const ox = 90 + SWAG*data, px = 730 + SWAG*data;
-    x += (player===0 ? ox-px : px-ox) * os;
+    x += (player===0 ? px-ox : ox-px) * os;
   }
 
   x += mod("transformX") + mod("transform"+data+"X");
