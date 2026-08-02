@@ -189,7 +189,6 @@ main {
   position: absolute;
   left: 0;
   top: 0;
-  /* NO transform here – it must scroll with the keyframes */
   pointer-events: none;
 }
 #kf-layer { position: absolute; inset: 0; pointer-events: none; }
@@ -355,8 +354,8 @@ main {
 <script>
 /* ========================================================================
    SEQUENCE / MODCHART EDITOR – faithful web port
-   Mirrors my attempt at making SequenceEditorState + ModManager + the supplied Haxe modifiers, 
-   but ported directly as a website tool
+   Mirrors my attempt at making a SequenceEditorState concept
+   but decided to port it directly as a website tool
    ======================================================================== */
 
 const GRID = 40;
