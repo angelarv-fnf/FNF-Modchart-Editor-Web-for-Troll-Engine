@@ -273,6 +273,7 @@ main {
         <label>Song <input id="inp-song" type="text" spellcheck="false"></label>
         <label>BPM <input id="inp-bpm" type="number" step="any"></label>
       </div>
+      <label class="check"><input id="chk-static-arrows" type="checkbox" checked> Static/Ghost Arrows Layer Visibility</label>
     </section>
     <section class="panel">
       <h2>Track <span id="track-badge"></span></h2>
@@ -774,7 +775,8 @@ const state = {
   kfId: 1,
   drag: null,
   scrub: false,
-  needsGrid: true
+  needsGrid: true,
+  showStaticArrows: true
 };
 
 let dom = {};
@@ -1382,13 +1384,15 @@ function renderPreview(){
   ctx.fillText('OPPONENT', 90, 60);
   ctx.fillText('PLAYER', 730, 60);
 
-  ctx.save();
-  ctx.globalAlpha = 0.12;
-  for(let p=0;p<2;p++) for(let d=0;d<4;d++){
-    const b = baseReceptorPos(p,d);
-    drawArrow(ctx, b.x, b.y, d, 0, 1, 1, 1, p===0?96:84);
+  if(state.showStaticArrows){
+    ctx.save();
+    ctx.globalAlpha = 0.12;
+    for(let p=0;p<2;p++) for(let d=0;d<4;d++){
+      const b = baseReceptorPos(p,d);
+      drawArrow(ctx, b.x, b.y, d, 0, 1, 1, 1, p===0?96:84);
+    }
+    ctx.restore();
   }
-  ctx.restore();
 
   const beat = (state.songPos / stepCrochet()) / 4;
   const timeSec = state.songPos / 1000;
@@ -2068,6 +2072,13 @@ function wireInspector(){
       flashStatus('BPM: '+v);
     }
   });
+  if(dom.chkStaticArrows){
+    dom.chkStaticArrows.checked = !!state.showStaticArrows;
+    dom.chkStaticArrows.addEventListener('change', ()=>{
+      state.showStaticArrows = dom.chkStaticArrows.checked;
+      flashStatus(state.showStaticArrows ? 'Static arrows: On' : 'Static arrows: Off');
+    });
+  }
   dom.selModifier.addEventListener('change', ()=>{
     const t = state.selectedTrack; if(!t) return;
     const old = t.modifier;
@@ -2303,6 +2314,7 @@ function init(){
     btnAudio:$('btn-audio'), btnAudio2:$('btn-audio2'), fileAudio:$('file-audio'), audioLabel:$('audio-label'),
     selSnap:$('sel-snap'), selZoom:$('sel-zoom'),
     inpSong:$('inp-song'), inpBpm:$('inp-bpm'),
+    chkStaticArrows:$('chk-static-arrows'),
     selModifier:$('sel-modifier'), selTarget:$('sel-target'),
     inpColor:$('inp-color'), chkVisible:$('chk-visible'), chkLocked:$('chk-locked'),
     trackBadge:$('track-badge'), kfCount:$('kf-count'),
