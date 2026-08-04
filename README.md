@@ -91,7 +91,7 @@ No build step or server required.
 
 ## Credits / License
 
-Created as a faithful web port of my SequenceEditorState concepts for Troll Engine. (yes, it was a concept but i moved it to the web so it's easier)
+Created as a web port of my (probably failed) SequenceEditorState.hx concepts for Troll Engine. (yes, it was a concept but i moved it to the web so it's easier)
 
 have fun modcharting lol byee
 
