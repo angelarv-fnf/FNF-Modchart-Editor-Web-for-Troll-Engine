@@ -28,7 +28,7 @@ https://github.com/troll-slaiyers/FNF-Troll-Engine/tags
 - Audio import (Inst OR Vocals) for scrubbing & playback
 - Continuous modifier functions (sine, cosine, linear, pulse, saw, square, hold, etc.)
 - Export formats:
-  - **Lua** (Troll Engine style)
+  - **Lua** (Troll Engine)
   - **HScript**
   - **JSON** (sequence.json)
 - Import:
