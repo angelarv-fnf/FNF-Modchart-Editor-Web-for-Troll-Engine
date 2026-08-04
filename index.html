@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>FNF Modchart Editor Web for Troll Engine</title>
+<title>FNF Modchart Editor · Troll / Schmovin Compatible</title>
 <style>
 :root {
   --bg: #0d0f14;
@@ -388,6 +388,7 @@ const modifierList = [
   "confusion","confusionOffset","confusionOffset0","confusionOffset1","confusionOffset2","confusionOffset3",
   "confusionzoffset","rotatex","rotatey","rotatez",
   "centerrotateX","centerrotateY","centerrotateZ","centerrotate",
+  "center0rotateX","center1rotateX","center2rotateX","center3rotateX",
 
   // Alpha / dark / stealth
   "alpha","alpha0","alpha1","alpha2","alpha3",
@@ -403,9 +404,9 @@ const modifierList = [
   "squish","stretch","miniX","miniY",
 
   // Classic NotITG / Troll wave mods
-  "tipsy","tipsyX","tipsyZ","tipsySpeed","tipsyOffset",
+  "tipsy","tipsyX","tipsyZ","tipsyZ0","tipsyZ1","tipsyZ2","tipsyZ3","tipsySpeed","tipsyOffset",
   "drunk","drunkZ","drunkSpeed","drunkOffset","drunkPeriod",
-  "bumpy","bumpyX","bumpyPeriod",
+  "bumpy","bumpyX","bumpyPeriod","bumpyXPeriod",
   "zigzag","sawtooth","square","bounce","brake","boost","tornado","wave",
   "wiggle","distortwiggle","distortwigglescratch","distortwiggleperiod",
 
@@ -644,8 +645,10 @@ function drunk(mod, data, timeSec, visualDiff, axis){
 
 function tipsy(mod, data, timeSec, axis){
   // Closer to real tipsy (DrunkModifier)
+  // Per-lane: tipsyZ0..tipsyZ3 share the same math as tipsyZ
   const key = axis === "Z" ? "tipsyZ" : (axis === "X" ? "tipsyX" : "tipsy");
-  const perc = mod(key) || (axis === "" ? mod("tipsy") : 0);
+  let perc = mod(key) || (axis === "" ? mod("tipsy") : 0);
+  if (axis === "Z") perc += mod("tipsyZ" + data) || 0;
   if (perc === 0) return 0;
   const speed  = mod(key + "Speed")  || mod("tipsySpeed");
   const offset = mod(key + "Offset") || mod("tipsyOffset");
@@ -851,33 +854,85 @@ function computeReceptor(engine, player, data, beat, timeSec){
   y += tY !== 0 ? tY : (mod("y") + mod("yoffset"));
   const zAmt = tZ !== 0 ? tZ : (mod("z") + mod("zoffset"));
   if (zAmt !== 0) {
+    // Z-axis illusion = mini-style scale + outward push from field centre
+    // (same visual language as flip spread + opponentSwap @ ~0.5)
     const s = 1 + zAmt * 0.004;
-    scaleX *= s; scaleY *= s;
+    scaleX *= s;
+    scaleY *= s;
+
+    // Centre of this player's 4 receptors (same base layout as flip / opponentSwap)
+    const fieldCenterX = player === 0
+      ? (90 + SWAG * 1.5)
+      : (730 + SWAG * 1.5);
+
+    // Positive Z expands away from centre; negative Z collapses toward it
+    const outward = zAmt * 0.008;
+    x += (x - fieldCenterX) * outward;
+    // mild vertical depth so it doesn't feel purely horizontal
+    y += (y - 360) * outward * 0.35;
   }
 
-  // ---------- Confusion / Rotate (simplified but stronger) ----------
+  // ---------- Confusion (local per-note/receptor spin – ConfusionModifier) ----------
+  // Matches Haxe: mainAngle = -((beat * main) % 360) + constAngle offsets
+  // This ONLY changes the drawn sprite angle; position is untouched.
   const conf = mod("confusion") + mod("confusion" + data);
-  const confOff = mod("confusionOffset") + mod("confusionOffset" + data) + mod("confusionzoffset");
-  // Prefer centerrotate*; fall back to rotate* (avoids double from dual-name Lua)
-  const crZ = mod("centerrotateZ") !== 0 ? mod("centerrotateZ") : mod("rotatez");
-  angle = -((beat * conf) % 360) + confOff
-        + crZ * (180 / Math.PI) * 0.5;   // rough visual
+  const confOff = mod("confusionOffset") + mod("confusionOffset" + data); // confusionzoffset is handled via alias
+  // receptorAngle extras (ConfusionModifier applies these on StrumNotes)
+  const receptorAng = mod("receptorAngle") + mod("receptor" + data + "Angle");
+  angle = -((beat * conf) % 360) + confOff + receptorAng;
 
-  // centerrotateX/Y approximated as orbital offsets; same prefer-primary rule
-  const crx = mod("centerrotateX") !== 0 ? mod("centerrotateX") : mod("rotatex");
-  const cry = mod("centerrotateY") !== 0 ? mod("centerrotateY") : mod("rotatey");
-  if (crx !== 0 || cry !== 0) {
-    // simple orbital offset around screen center
-    const cx = 640, cy = 360;
-    const dx = x - cx, dy = y - cy;
-    const cosX = Math.cos(crx), sinX = Math.sin(crx);
-    const cosY = Math.cos(cry), sinY = Math.sin(cry);
-    // approximate 3D rotate on X then Y
-    let y2 = dy * cosX - 0 * sinX;
-    let z2 = dy * sinX + 0 * cosX;
-    let x2 = dx * cosY + z2 * sinY;
-    x = cx + x2;
-    y = cy + y2;
+  // ---------- Rotate / CenterRotate (positional orbit – RotateModifier) ----------
+  // Per-column: center0rotateX..center3rotateX share the same math as centerrotateX
+  const centerRotX = mod("centerrotateX") + (mod("center" + data + "rotateX") || 0);
+  const centerRotY = mod("centerrotateY") + (mod("center" + data + "rotateY") || 0);
+  const centerRotZ = (mod("centerrotateZ") || mod("centerrotate"))
+                   + (mod("center" + data + "rotateZ") || 0);
+  const hasCenter = centerRotX !== 0 || centerRotY !== 0 || centerRotZ !== 0;
+  const rotX = hasCenter ? centerRotX : mod("rotatex");
+  const rotY = hasCenter ? centerRotY : mod("rotatey");
+  const rotZ = hasCenter ? centerRotZ : mod("rotatez");
+
+  if (rotX !== 0 || rotY !== 0 || rotZ !== 0) {
+    const originX = hasCenter ? 640 : baseX;
+    const originY = 360;
+
+    let dx = x - originX;
+    let dy = y - originY;
+    let dz = 0;
+
+    // degrees → radians (FlxAngle.TO_RAD)
+    const ax = rotX * Math.PI / 180;
+    const ay = rotY * Math.PI / 180;
+    const az = rotZ * Math.PI / 180;
+
+    // VectorHelpers.rotateV3: Z first, then Y, then X
+    // CoolMath.rotate(x,y,r) => (x*c - y*s, x*s + y*c)
+    {
+      // Z on (x, y)
+      const c = Math.cos(az), s = Math.sin(az);
+      const x1 = dx * c - dy * s;
+      const y1 = dx * s + dy * c;
+      // Y on (x', z)
+      const cY = Math.cos(ay), sY = Math.sin(ay);
+      const x2 = x1 * cY - dz * sY;
+      const z1 = x1 * sY + dz * cY;
+      // X on (z', y')  — CoolMath.rotate(rotateY.y, rotateZ.y, xA)
+      const cX = Math.cos(ax), sX = Math.sin(ax);
+      const z2 = z1 * cX - y1 * sX;
+      const y2 = z1 * sX + y1 * cX;
+      dx = x2;
+      dy = y2;
+      dz = z2;
+    }
+
+    x = originX + dx;
+    y = originY + dy;
+    // Mild Z→scale so depth is still visible in the 2-D preview
+    if (dz !== 0) {
+      const s = 1 + dz * 0.0015;
+      scaleX *= s;
+      scaleY *= s;
+    }
   }
 
   // ---------- Alpha / Stealth / Dark ----------
@@ -974,6 +1029,7 @@ function startNewProject(){
   state.kfId = 1;
   if(state.isPlaying) stopPlayback();
   if(state.audio){ try{ state.audio.pause(); }catch(e){} }
+  if(state.audioSource){ try{ state.audioSource.disconnect(); }catch(e){} state.audioSource = null; }
   state.audio = null;
   state.audioName = '';
   if(dom.audioLabel) dom.audioLabel.textContent = '';
@@ -1444,7 +1500,17 @@ function togglePlay(){
   state.isPlaying = !state.isPlaying;
   if(state.isPlaying){
     state.lastBeat = -1;
-    if(state.audio){ try{ state.audio.currentTime = state.songPos/1000; state.audio.play(); }catch(e){} }
+    if(state.audioCtx && state.audioCtx.state === 'suspended'){
+      try{ state.audioCtx.resume(); }catch(e){}
+    }
+    if(state.audio){
+      try{
+        state.audio.muted = false;
+        state.audio.volume = 1;
+        state.audio.currentTime = state.songPos/1000;
+        state.audio.play();
+      }catch(e){}
+    }
   } else if(state.audio){ try{ state.audio.pause(); }catch(e){} }
   updateTransportBtn();
 }
@@ -1476,14 +1542,14 @@ function shade(hex, amt){
 }
 
 function drawArrow(ctx, x, y, dir, angle, sx, sy, alpha, size){
-  const pivotX=640, pivotY=186;
+  // Rotate each arrow around its OWN center.
+  // confusion / confusionOffset / receptorAngle → local spin (ConfusionModifier).
+  // rotate*/centerrotate* only move position; they do not feed this angle.
   ctx.save();
   ctx.globalAlpha = Math.max(0, alpha);
-  ctx.translate(pivotX, pivotY);
-  ctx.rotate(angle * Math.PI/180);
-  ctx.translate(-pivotX, -pivotY);
   ctx.translate(x, y);
-  ctx.rotate(dirAngle[dir]);
+  ctx.rotate(angle * Math.PI / 180);   // per-note / per-receptor spin
+  ctx.rotate(dirAngle[dir]);           // point the arrow in the correct direction
   ctx.scale(sx, sy);
   const s = size;
   const col = laneColors[dir];
@@ -1936,13 +2002,15 @@ function parseModchartScript(text){
     });
   }
 
-  const reQueueSet = /queueSet\s*\(\s*([^,]+)\s*,\s*["']([^"']+)["']\s*,\s*([^,\)]+)(?:\s*,\s*([^\)\]]+))?\s*\)/g;
+  // Accept queueSet / qSet / modManager.queueSet (and the *P variants)
+  const reQueueSet = /(?:queueSetP?|qSet)\s*\(\s*([^,]+)\s*,\s*["']([^"']+)["']\s*,\s*([^,\)]+)(?:\s*,\s*([^\)\]]+))?\s*\)/g;
   let m;
   while((m = reQueueSet.exec(text)) !== null){
     addSet(m[1], m[2], m[3], m[4]);
   }
 
-  const reQueueEase = /queueEase\s*\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*["']([^"']+)["']\s*,\s*([^,]+)\s*,\s*["']([^"']+)["'](?:\s*,\s*([^\)\]]+))?\s*\)/g;
+  // Accept queueEase / qEase / modManager.queueEase (and the *P variants)
+  const reQueueEase = /(?:queueEaseP?|qEase)\s*\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*["']([^"']+)["']\s*,\s*([^,]+)\s*,\s*["']([^"']+)["'](?:\s*,\s*([^\)\]]+))?\s*\)/g;
   while((m = reQueueEase.exec(text)) !== null){
     addEase(m[1], m[2], m[3], m[4], m[5], m[6]);
   }
@@ -1952,12 +2020,12 @@ function parseModchartScript(text){
     addSet('0', m[1], m[2], m[3]);
   }
 
-  const reMMSet = /modManager\.queueSet\s*\(\s*([^,]+)\s*,\s*["']([^"']+)["']\s*,\s*([^,\)]+)(?:\s*,\s*([^\)\]]+))?\s*\)/g;
+  const reMMSet = /modManager\.queueSetP?\s*\(\s*([^,]+)\s*,\s*["']([^"']+)["']\s*,\s*([^,\)]+)(?:\s*,\s*([^\)\]]+))?\s*\)/g;
   while((m = reMMSet.exec(text)) !== null){
     addSet(m[1], m[2], m[3], m[4]);
   }
 
-  const reMMEase = /modManager\.queueEase\s*\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*["']([^"']+)["']\s*,\s*([^,]+)\s*,\s*["']([^"']+)["'](?:\s*,\s*([^\)\]]+))?\s*\)/g;
+  const reMMEase = /modManager\.queueEaseP?\s*\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*["']([^"']+)["']\s*,\s*([^,]+)\s*,\s*["']([^"']+)["'](?:\s*,\s*([^\)\]]+))?\s*\)/g;
   while((m = reMMEase.exec(text)) !== null){
     addEase(m[1], m[2], m[3], m[4], m[5], m[6]);
   }
@@ -1977,7 +2045,7 @@ function importScript(file){
       const text = reader.result;
       const { events, ignoredComplex } = parseModchartScript(text);
       if(!events.length){
-        flashStatus('No queueSet/queueEase found (complex script?)');
+        flashStatus('No queueSet/qSet/queueEase found (use the expanded flat version for complex charts)');
         return;
       }
 
@@ -2357,9 +2425,21 @@ function wireInspector(){
   dom.btnAudio.addEventListener('click', ()=>dom.fileAudio.click());
   dom.fileAudio.addEventListener('change', ()=>{
     const f = dom.fileAudio.files[0]; if(!f) return;
-    if(state.audio) state.audio.pause();
+    if(state.audio){ try{ state.audio.pause(); }catch(e){} }
+    if(state.audioSource){ try{ state.audioSource.disconnect(); }catch(e){} state.audioSource = null; }
     state.audio = new Audio(URL.createObjectURL(f));
     state.audio.loop = false;
+    state.audio.volume = 1;
+    state.audio.muted = false;
+    // Route through Web Audio so Game Bar / system capture sees normal app audio
+    try{
+      if(!state.audioCtx){
+        state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if(state.audioCtx.state === 'suspended') state.audioCtx.resume();
+      state.audioSource = state.audioCtx.createMediaElementSource(state.audio);
+      state.audioSource.connect(state.audioCtx.destination);
+    }catch(e){ console.warn('AudioContext setup failed', e); }
     state.audio.addEventListener('loadedmetadata', ()=>{
       state.audioName = f.name;
       dom.audioLabel.textContent = f.name;
@@ -2369,7 +2449,8 @@ function wireInspector(){
     dom.fileAudio.value = '';
   });
   dom.btnAudio2.addEventListener('click', ()=>{
-    if(state.audio) state.audio.pause();
+    if(state.audio){ try{ state.audio.pause(); }catch(e){} }
+    if(state.audioSource){ try{ state.audioSource.disconnect(); }catch(e){} state.audioSource = null; }
     state.audio = null; state.audioName = '';
     dom.audioLabel.textContent = '';
   });
@@ -2432,6 +2513,16 @@ function wireKeyboard(){
     else if(e.code==='Enter'){ e.preventDefault(); addKeyframeAt(snapToQuant(state.songPos/stepCrochet())); }
   });
 }
+
+// Resume song if Game Bar / focus blip paused media
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState === 'visible' && state.isPlaying && state.audio){
+    if(state.audioCtx && state.audioCtx.state === 'suspended'){
+      try{ state.audioCtx.resume(); }catch(e){}
+    }
+    try{ state.audio.play(); }catch(e){}
+  }
+});
 
 function init(){
   dom = {
