@@ -58,13 +58,13 @@ label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); fo
 label.check { flex-direction: row; align-items: center; gap: 6px; color: var(--text); font-size: 12px; }
 
 /* modal */
-#modal-overlay {
+#modal-overlay, #engine-modal-overlay {
   position: fixed; inset: 0; z-index: 200;
   background: rgba(0,0,0,0.65);
   display: none; align-items: center; justify-content: center;
 }
-#modal-overlay.show { display: flex; }
-#modal {
+#modal-overlay.show, #engine-modal-overlay.show { display: flex; }
+#modal, #engine-modal {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -73,17 +73,21 @@ label.check { flex-direction: row; align-items: center; gap: 6px; color: var(--t
   box-shadow: 0 12px 40px rgba(0,0,0,0.55);
   display: flex; flex-direction: column; gap: 16px;
 }
-#modal h3 {
+#modal h3, #engine-modal h3 {
   margin: 0; font-size: 14px; letter-spacing: 1px;
   color: var(--text);
 }
-#modal p {
+#modal p, #engine-modal p {
   margin: 0; color: var(--muted); font-size: 12px; line-height: 1.45;
 }
-#modal .modal-actions {
+#modal .modal-actions, #engine-modal .modal-actions {
   display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end;
 }
-#modal .modal-actions button { min-width: 0; }
+#modal .modal-actions button, #engine-modal .modal-actions button { min-width: 0; }
+#engine-modal .modal-actions button.primary {
+  padding: 10px 14px;
+  font-size: 13px;
+}
 
 /* top bar */
 #topbar {
@@ -346,6 +350,21 @@ main {
       <button id="modal-save-hscript" class="primary">Save as HScript</button>
       <button id="modal-discard" class="danger">Start new and don't save</button>
       <button id="modal-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Engine selection modal for Lua export -->
+<div id="engine-modal-overlay">
+  <div id="engine-modal" role="dialog" aria-modal="true" aria-labelledby="engine-modal-title">
+    <h3 id="engine-modal-title">Which engine do you want to use this script?</h3>
+    <p>Choose the target engine for your Lua modchart export.<br>
+       <strong>Troll Engine v0.2.0</strong> uses native queueSet / queueEase.<br>
+       <strong>Vanilla Psych</strong> requires the Enhanced Modchart Template (or FNF-Modcharting-Tools) to run.</p>
+    <div class="modal-actions" style="flex-direction:column; align-items:stretch; gap:10px;">
+      <button id="engine-btn-troll" class="primary">Troll Engine v0.2.0</button>
+      <button id="engine-btn-psych" class="primary">Vanilla Psych</button>
+      <button id="engine-btn-cancel">Cancel</button>
     </div>
   </div>
 </div>
@@ -1654,6 +1673,823 @@ function buildContinuousBody(func, mod, playerArg) {
   }
 }
 
+/* ---------- Embedded EnhancedModchartTemplate.lua (for Vanilla Psych download) ---------- */
+const ENHANCED_MODCHART_TEMPLATE = `-- Enhanced Psych Lua Modchart Template (v2 - accurate to Troll Engine / Haxe)
+-- Original by TheZoroForce240 (Simple Modchart Template)
+-- Math ported from Troll Engine modifiers:
+--   DrunkModifier.hx, PathModifier.hx, BeatModifier.hx, ReverseModifier.hx,
+--   ConfusionModifier.hx, TransformModifier.hx, PerspectiveModifier.hx
+-- Compatible with the web Sequence Editor "Vanilla Psych" export
+-- (setModifierX/Y/Z + easeModifierX/Y/Z events)
+
+local modchart = true
+
+local keyCount = 4
+local maxStrums = 12 -- 0-3 Opponent, 4-7 Player, 8-11 Auxiliary
+local arrowSize = 112 -- Note.swagWidth
+local halfWidth = arrowSize * 0.5
+local scrollSwitch = 520
+
+local defaultSusScaleY = -1
+local defaultSusEndScaleY = -1
+
+-- ============================================
+-- HELPERS (match Haxe CoolUtil / FlxMath)
+-- ============================================
+local function clamp(v, lo, hi)
+	if v < lo then return lo end
+	if v > hi then return hi end
+	return v
+end
+
+local function lerp(a, b, t)
+	return a + (b - a) * t
+end
+
+local function scale(x, min, max, a, b)
+	if min == max then return a end
+	return a + ((x - min) / (max - min)) * (b - a)
+end
+
+-- Triangle wave used by zigzag (PathModifier.hx)
+local function triangle(angle)
+	local fAngle = angle % (math.pi * 2)
+	if fAngle < 0 then fAngle = fAngle + math.pi * 2 end
+	local result = fAngle * (1 / math.pi)
+	if result < 0.5 then
+		return result * 2
+	elseif result < 1.5 then
+		return 1 - ((result - 0.5) * 2)
+	else
+		return -4 + (result * 2)
+	end
+end
+
+-- Square wave used by square (PathModifier.hx)
+local function squareWave(angle)
+	local fAngle = angle % (math.pi * 2)
+	if fAngle < 0 then fAngle = fAngle + math.pi * 2 end
+	return (fAngle >= math.pi) and -1 or 1
+end
+
+-- ============================================
+-- RUN MODIFIERS - accurate Troll Engine math
+-- data = column index, curPos = visual distance from receptor (pixels * speed)
+-- Returns {xOffset, yOffset, zOffset, angle}
+-- ============================================
+function runModifiers(data, curPos)
+	local xOffset = 0
+	local yOffset = 0
+	local zOffset = 0
+	local angle = 0
+
+	local playerColumn = data % keyCount
+	local songPos = getSongPosition() * 0.001 -- seconds
+	local beat = 0
+	if curDecBeat then
+		beat = curDecBeat
+	elseif curBeat then
+		beat = curBeat
+	else
+		beat = (getSongPosition() / 1000) * ((bpm or 150) / 60)
+	end
+
+	local screenH = screenHeight or 720
+
+	-- Helper to read a sprite property safely (global + per-column)
+	local function getMod(name, axis)
+		axis = axis or 'x'
+		local g = getProperty(name .. '.' .. axis) or 0
+		local c = getProperty(name .. data .. '.' .. axis) or 0
+		return g + c
+	end
+
+	local function getModOnly(name, axis)
+		return getProperty(name .. '.' .. (axis or 'x')) or 0
+	end
+
+	-- ============================================
+	-- TRANSFORM (TransformModifier.hx) - direct offsets
+	-- ============================================
+	xOffset = xOffset + getMod('transformX', 'x') + getMod('strumOffset', 'x')
+	yOffset = yOffset + getMod('transformY', 'y') + getMod('strumOffset', 'y')
+	zOffset = zOffset + getMod('transformZ', 'angle') + getMod('strumOffset', 'angle')
+
+	-- ============================================
+	-- DRUNK (DrunkModifier.hx - exact)
+	-- angle = time*(1+speed) + data*((offset*0.2)+0.2) + visualDiff*((period*10)+10)/height
+	-- return perc * cos(angle) * swagWidth * 0.5
+	-- ============================================
+	local function applyDrunk(axis, outAxis)
+		local perc
+		if axis == '' then
+			perc = getMod('drunk', 'x')
+		else
+			perc = getMod('drunk' .. axis, outAxis or 'x')
+		end
+		if perc == 0 then return 0 end
+		local speed, period, offset
+		if axis == '' then
+			speed  = getModOnly('drunkSpeed', 'x')
+			period = getModOnly('drunkPeriod', 'x')
+			offset = getModOnly('drunkOffset', 'x')
+		else
+			speed  = getModOnly('drunk' .. axis .. 'Speed', 'x')
+			period = getModOnly('drunk' .. axis .. 'Period', 'x')
+			offset = getModOnly('drunk' .. axis .. 'Offset', 'x')
+		end
+		local ang = songPos * (1 + speed) + playerColumn * ((offset * 0.2) + 0.2) + curPos * ((period * 10) + 10) / screenH
+		return perc * (math.cos(ang) * halfWidth)
+	end
+
+	xOffset = xOffset + applyDrunk('', 'x')
+	yOffset = yOffset + applyDrunk('Y', 'y')
+	zOffset = zOffset + applyDrunk('Z', 'angle')
+
+	-- ============================================
+	-- TIPSY (DrunkModifier.hx - exact)
+	-- perc * cos(time*((speed*1.2)+1.2) + data*((offset*1.8)+1.8)) * swagWidth * 0.4
+	-- ============================================
+	local function applyTipsy(axis, outAxis)
+		local perc
+		local speed, offset
+		if axis == '' then
+			perc = getMod('tipsy', 'y')
+			speed  = getModOnly('tipsySpeed', 'x')
+			offset = getModOnly('tipsyOffset', 'x')
+		elseif axis == 'Z' then
+			perc = getMod('tipZ', outAxis or 'angle')
+			speed  = getModOnly('tipZSpeed', 'x')
+			offset = getModOnly('tipZOffset', 'x')
+		else
+			perc = getMod('tipsy' .. axis, outAxis or 'x')
+			speed  = getModOnly('tipsy' .. axis .. 'Speed', 'x')
+			offset = getModOnly('tipsy' .. axis .. 'Offset', 'x')
+		end
+		if perc == 0 then return 0 end
+		local ang = songPos * ((speed * 1.2) + 1.2) + playerColumn * ((offset * 1.8) + 1.8)
+		return perc * (math.cos(ang) * arrowSize * 0.4)
+	end
+
+	xOffset = xOffset + applyTipsy('X', 'x')
+	yOffset = yOffset + applyTipsy('', 'y')
+	zOffset = zOffset + applyTipsy('Z', 'angle')
+
+	-- ============================================
+	-- BUMPY (DrunkModifier.hx - exact)
+	-- angle = (visualDiff + 100*offset) / ((period*16)+16)
+	-- return perc * 40 * sin(angle)
+	-- ============================================
+	local function applyBumpy(axis, outAxis)
+		local perc
+		local period, offset
+		if axis == '' then
+			perc = getMod('bumpy', 'y')
+			period = getModOnly('bumpyPeriod', 'x')
+			offset = getModOnly('bumpyOffset', 'x')
+		else
+			perc = getMod('bumpy' .. axis, outAxis or 'y')
+			period = getModOnly('bumpy' .. axis .. 'Period', 'x')
+			offset = getModOnly('bumpy' .. axis .. 'Offset', 'x')
+		end
+		if perc == 0 then return 0 end
+		local ang = (curPos + (100 * offset)) / ((period * 16) + 16)
+		return perc * 40 * math.sin(ang)
+	end
+
+	xOffset = xOffset + applyBumpy('X', 'x')
+	yOffset = yOffset + applyBumpy('Y', 'y')
+	zOffset = zOffset + applyBumpy('', 'y')
+
+	-- ============================================
+	-- TORNADO (PathModifier.hx / Schmovin)
+	-- ============================================
+	local tornado = getMod('tornado', 'x')
+	if tornado ~= 0 then
+		local columnPhase = playerColumn * math.pi / 3
+		local phase = curPos / 135
+		local returnOffset = (-math.cos(-columnPhase) + 1) / 2 * arrowSize * 3
+		local offsetX = (-math.cos(phase - columnPhase) + 1) / 2 * arrowSize * 3 - returnOffset
+		xOffset = xOffset + offsetX * tornado
+	end
+
+	-- ============================================
+	-- ZIGZAG (PathModifier.hx - triangle wave)
+	-- ============================================
+	local zigzag = getMod('zigzag', 'x')
+	if zigzag ~= 0 then
+		local period = getModOnly('zigzagPeriod', 'x')
+		local offset = getModOnly('zigzagOffset', 'x')
+		local result = triangle(math.pi * (1 / (period + 1)) * ((curPos + (100 * offset)) / arrowSize))
+		xOffset = xOffset + (zigzag * halfWidth) * result
+	end
+
+	-- ============================================
+	-- SQUARE (PathModifier.hx)
+	-- ============================================
+	local square = getMod('square', 'x')
+	if square ~= 0 then
+		local period = getModOnly('squarePeriod', 'x')
+		local offset = getModOnly('squareOffset', 'x')
+		local cum = math.pi * (curPos + offset) / (arrowSize + (period * arrowSize))
+		xOffset = xOffset + square * halfWidth * squareWave(cum)
+	end
+
+	-- ============================================
+	-- BOUNCE (PathModifier.hx)
+	-- ============================================
+	local bounce = getMod('bounce', 'x')
+	if bounce ~= 0 then
+		local offset = (getModOnly('bounceOffset', 'x') or 0) * 100
+		local period = (getModOnly('bouncePeriod', 'x') or 0) * 60
+		local b = math.abs(math.sin((curPos + offset) / (60 + period)))
+		xOffset = xOffset + bounce * halfWidth * b
+	end
+
+	-- ============================================
+	-- SAWTOOTH (PathModifier.hx)
+	-- ============================================
+	local saw = getMod('sawtooth', 'x')
+	if saw ~= 0 then
+		local period = (getModOnly('sawtoothPeriod', 'x') or 0) + 1
+		local t = (0.5 / period * curPos) / arrowSize
+		xOffset = xOffset + (saw * arrowSize) * (t - math.floor(t))
+	end
+
+	-- ============================================
+	-- SINE (simple vertical wave)
+	-- ============================================
+	local sine = getMod('sine', 'y')
+	if sine ~= 0 then
+		yOffset = yOffset + sine * math.sin(songPos * 2 * math.pi + playerColumn) * arrowSize * 0.3
+	end
+
+	-- ============================================
+	-- BEAT (BeatModifier.hx - accel/decel envelope)
+	-- ============================================
+	local function beatAmount(offset, mult)
+		local accelTime = 0.2
+		local totalTime = 0.5
+		local b = (beat + accelTime + offset) * (mult + 1)
+		local evenBeat = (math.floor(b) % 2) ~= 0
+		if b < 0 then return 0 end
+		b = b - math.floor(b)
+		if b >= totalTime then return 0 end
+		local amount = 0
+		if b < accelTime then
+			amount = scale(b, 0, accelTime, 0, 1)
+			amount = amount * amount
+		else
+			amount = scale(b, accelTime, totalTime, 1, 0)
+			amount = 1 - (1 - amount) * (1 - amount)
+		end
+		if evenBeat then amount = -amount end
+		return 40 * amount
+	end
+
+	local beatX = getMod('beat', 'x')
+	if beatX ~= 0 then
+		local period = getModOnly('beatPeriod', 'x')
+		local factor = beatAmount(getModOnly('beatOffset', 'x'), getModOnly('beatMult', 'x'))
+		xOffset = xOffset + beatX * (factor * math.sin((curPos / ((period * 30) + 30)) + math.pi / 2))
+	end
+	local beatY = getMod('beatY', 'y')
+	if beatY ~= 0 then
+		local period = getModOnly('beatYPeriod', 'x')
+		local factor = beatAmount(getModOnly('beatYOffset', 'x'), getModOnly('beatYMult', 'x'))
+		yOffset = yOffset + beatY * (factor * math.sin((curPos / ((period * 30) + 30)) + math.pi / 2))
+	end
+
+	-- ============================================
+	-- REVERSE (improved approximation of ReverseModifier.hx)
+	-- Real engine does a full Y lerp using visualDiff.
+	-- Here we apply a receptor-relative shift + split/alternate/cross.
+	-- ============================================
+	local reverseVal = getMod('reverse', 'y')
+	reverseVal = reverseVal + getModOnly('split', 'x') * ((playerColumn >= keyCount/2) and 1 or 0)
+	reverseVal = reverseVal + getModOnly('alternate', 'x') * ((playerColumn % 2 == 1) and 1 or 0)
+	local first = keyCount / 4
+	local last = keyCount - 1 - first
+	if playerColumn >= first and playerColumn <= last then
+		reverseVal = reverseVal + getModOnly('cross', 'x')
+	end
+	if getModOnly('unboundedReverse', 'x') == 0 then
+		reverseVal = reverseVal % 2
+		if reverseVal > 1 then reverseVal = 2 - reverseVal end
+	end
+	if downscroll then
+		reverseVal = 1 - reverseVal
+	end
+	if reverseVal ~= 0 then
+		yOffset = yOffset + scrollSwitch * reverseVal
+	end
+
+	-- ============================================
+	-- CONFUSION / ANGLE (ConfusionModifier.hx)
+	-- mainAngle = -((beat * main) % 360)
+	-- ============================================
+	local conf = getMod('confusion', 'angle')
+	local confOff = getMod('confusionOffset', 'angle')
+	if conf ~= 0 or confOff ~= 0 then
+		local mainAngle = -((beat * conf) % 360)
+		angle = angle + mainAngle + confOff
+	end
+
+	-- ============================================
+	-- SPIRAL
+	-- ============================================
+	local spiral = getModOnly('spiral', 'x')
+	if spiral ~= 0 then
+		xOffset = xOffset + math.sin(curPos * 0.01) * spiral * 20
+		yOffset = yOffset + math.cos(curPos * 0.01) * spiral * 20
+	end
+
+	return {xOffset, yOffset, zOffset / 1000, angle}
+end
+
+-- ============================================
+-- ON CREATE POST - SETUP ALL MODIFIER SPRITES
+-- ============================================
+function onCreatePost()
+	for i = 0, maxStrums - 1 do
+		makeLuaSprite('strumOffset'..i, '', 0, 0)
+		makeLuaSprite('scaleMulti'..i, '', 1, 1)
+		makeLuaSprite('reverse'..i, '', 0, 0)
+		makeLuaSprite('confusion'..i, '', 0, 0)
+		makeLuaSprite('confusionOffset'..i, '', 0, 0)
+		makeLuaSprite('drunk'..i, '', 0, 0)
+		makeLuaSprite('tipsy'..i, '', 0, 0)
+		makeLuaSprite('tornado'..i, '', 0, 0)
+		makeLuaSprite('sine'..i, '', 0, 0)
+		makeLuaSprite('square'..i, '', 0, 0)
+		makeLuaSprite('zigzag'..i, '', 0, 0)
+		makeLuaSprite('beat'..i, '', 0, 0)
+		makeLuaSprite('transformX'..i, '', 0, 0)
+		makeLuaSprite('transformY'..i, '', 0, 0)
+		makeLuaSprite('transformZ'..i, '', 0, 0)
+		makeLuaSprite('stealth'..i, '', 0, 0)
+		makeLuaSprite('bumpy'..i, '', 0, 0)
+		makeLuaSprite('bounce'..i, '', 0, 0)
+		makeLuaSprite('brake'..i, '', 0, 0)
+		makeLuaSprite('boost'..i, '', 0, 0)
+	end
+
+	-- Global modifiers (sprite.x / .y / .angle are the three axes)
+	makeLuaSprite('tipsy', '', 0, 0)
+	makeLuaSprite('drunk', '', 0, 0)
+	makeLuaSprite('tipsySpeed', '', 0, 0)
+	makeLuaSprite('drunkSpeed', '', 0, 0)
+	makeLuaSprite('tipsyOffset', '', 0, 0)
+	makeLuaSprite('drunkOffset', '', 0, 0)
+	makeLuaSprite('drunkPeriod', '', 0, 0)
+	makeLuaSprite('tipsyPeriod', '', 0, 0)
+
+	makeLuaSprite('tornado', '', 0, 0)
+	makeLuaSprite('sine', '', 0, 0)
+	makeLuaSprite('square', '', 0, 0)
+	makeLuaSprite('zigzag', '', 0, 0)
+	makeLuaSprite('zigzagPeriod', '', 0, 0)
+	makeLuaSprite('zigzagOffset', '', 0, 0)
+	makeLuaSprite('squarePeriod', '', 0, 0)
+	makeLuaSprite('squareOffset', '', 0, 0)
+	makeLuaSprite('sawtooth', '', 0, 0)
+	makeLuaSprite('sawtoothPeriod', '', 0, 0)
+	makeLuaSprite('bounce', '', 0, 0)
+	makeLuaSprite('bounceOffset', '', 0, 0)
+	makeLuaSprite('bouncePeriod', '', 0, 0)
+	makeLuaSprite('beat', '', 0, 0)
+	makeLuaSprite('beatY', '', 0, 0)
+	makeLuaSprite('beatOffset', '', 0, 0)
+	makeLuaSprite('beatPeriod', '', 0, 0)
+	makeLuaSprite('beatMult', '', 0, 0)
+	makeLuaSprite('beatYOffset', '', 0, 0)
+	makeLuaSprite('beatYPeriod', '', 0, 0)
+	makeLuaSprite('beatYMult', '', 0, 0)
+	makeLuaSprite('spiral', '', 0, 0)
+
+	makeLuaSprite('scale', '', 0.7, 0.7)
+	makeLuaSprite('confusion', '', 0, 0)
+	makeLuaSprite('confusionOffset', '', 0, 0)
+	makeLuaSprite('reverse', '', 0, 0)
+	makeLuaSprite('split', '', 0, 0)
+	makeLuaSprite('alternate', '', 0, 0)
+	makeLuaSprite('cross', '', 0, 0)
+	makeLuaSprite('unboundedReverse', '', 0, 0)
+
+	makeLuaSprite('transformX', '', 0, 0)
+	makeLuaSprite('transformY', '', 0, 0)
+	makeLuaSprite('transformZ', '', 0, 0)
+
+	makeLuaSprite('bumpy', '', 0, 0)
+	makeLuaSprite('bumpyPeriod', '', 0, 0)
+	makeLuaSprite('bumpyOffset', '', 0, 0)
+	makeLuaSprite('bumpyX', '', 0, 0)
+	makeLuaSprite('bumpyY', '', 0, 0)
+	makeLuaSprite('brake', '', 0, 0)
+	makeLuaSprite('boost', '', 0, 0)
+	makeLuaSprite('stealth', '', 0, 0)
+	makeLuaSprite('dark', '', 0, 0)
+	makeLuaSprite('hidden', '', 0, 0)
+	makeLuaSprite('sudden', '', 0, 0)
+
+	makeLuaSprite('centered', '', 0, 0)
+	makeLuaSprite('opponentSwap', '', 0, 0)
+	makeLuaSprite('fieldYaw', '', 0, 0)
+	makeLuaSprite('fieldPitch', '', 0, 0)
+	makeLuaSprite('fieldRoll', '', 0, 0)
+	makeLuaSprite('fieldZ', '', 0, 0)
+	makeLuaSprite('fieldY', '', 0, 0)
+	makeLuaSprite('fieldX', '', 0, 0)
+	makeLuaSprite('stretch', '', 0, 0)
+	makeLuaSprite('centerrotateZ', '', 0, 0)
+	makeLuaSprite('alpha', '', 1, 1)
+	makeLuaSprite('xmod', '', 1, 1)
+
+	makeLuaSprite('mini', '', 0, 0)
+	makeLuaSprite('tiny', '', 0, 0)
+	makeLuaSprite('invert', '', 0, 0)
+	makeLuaSprite('flip', '', 0, 0)
+
+	if downscroll then
+		scrollSwitch = -520
+	end
+
+	modchart = true
+end
+
+-- ============================================
+-- EVENT HANDLERS (compatible with editor export)
+-- ============================================
+function onEvent(tag, val1, val2)
+	if tag == 'resetX' then
+		resetX(tonumber(val1), val2)
+	elseif tag == 'resetY' then
+		resetY(tonumber(val1), val2)
+	elseif tag == 'resetZ' then
+		resetZ(tonumber(val1), val2)
+	elseif tag == 'invert' then
+		invert(tonumber(val1), val2)
+	elseif tag == 'flip' then
+		flip(tonumber(val1), val2)
+	elseif tag == 'easeModifierX' or tag == 'easeModifierY' or tag == 'easeModifierZ' then
+		local nameAndVal = val1:split(",")
+		local timeAndEase = val2:split(",")
+		local axis = (tag == 'easeModifierX' and '.x') or (tag == 'easeModifierY' and '.y') or '.angle'
+		if axis == '.x' then
+			doTweenX(nameAndVal[1]..axis, nameAndVal[1], tonumber(nameAndVal[2]), tonumber(timeAndEase[1]), timeAndEase[2])
+		elseif axis == '.y' then
+			doTweenY(nameAndVal[1]..axis, nameAndVal[1], tonumber(nameAndVal[2]), tonumber(timeAndEase[1]), timeAndEase[2])
+		else
+			doTweenAngle(nameAndVal[1]..axis, nameAndVal[1], tonumber(nameAndVal[2]), tonumber(timeAndEase[1]), timeAndEase[2])
+		end
+	elseif tag == 'setModifierX' then
+		setProperty(val1..'.x', tonumber(val2))
+	elseif tag == 'setModifierY' then
+		setProperty(val1..'.y', tonumber(val2))
+	elseif tag == 'setModifierZ' then
+		setProperty(val1..'.angle', tonumber(val2))
+	end
+end
+
+function string:split(inSplitPattern, outResults)
+	if not outResults then outResults = {} end
+	local theStart = 1
+	local theSplitStart, theSplitEnd = string.find(self, inSplitPattern, theStart)
+	while theSplitStart do
+		table.insert(outResults, string.sub(self, theStart, theSplitStart - 1))
+		theStart = theSplitEnd + 1
+		theSplitStart, theSplitEnd = string.find(self, inSplitPattern, theStart)
+	end
+	table.insert(outResults, string.sub(self, theStart))
+	return outResults
+end
+
+function resetX(time, ease)
+	for i = 0, maxStrums - 1 do
+		doTweenX(i..'x', 'strumOffset'..i, 0, time, ease)
+	end
+end
+
+function resetY(time, ease)
+	for i = 0, maxStrums - 1 do
+		doTweenY(i..'y', 'strumOffset'..i, 0, time, ease)
+	end
+end
+
+function resetZ(time, ease)
+	for i = 0, maxStrums - 1 do
+		doTweenAngle(i..'z', 'strumOffset'..i, 0, time, ease)
+	end
+end
+
+function invert(time, ease)
+	for i = 0, maxStrums - 1 do
+		local invertVal = (i % 2 == 0) and 1 or -1
+		doTweenX(i..'x', 'strumOffset'..i, arrowSize * invertVal, time, ease)
+	end
+end
+
+function flip(time, ease)
+	doTweenX('0x', 'strumOffset0', arrowSize * 3, time, ease)
+	doTweenX('1x', 'strumOffset1', arrowSize * 1, time, ease)
+	doTweenX('2x', 'strumOffset2', arrowSize * -1, time, ease)
+	doTweenX('3x', 'strumOffset3', arrowSize * -3, time, ease)
+	doTweenX('4x', 'strumOffset4', arrowSize * 3, time, ease)
+	doTweenX('5x', 'strumOffset5', arrowSize * 1, time, ease)
+	doTweenX('6x', 'strumOffset6', arrowSize * -1, time, ease)
+	doTweenX('7x', 'strumOffset7', arrowSize * -3, time, ease)
+end
+
+-- ============================================
+-- VIEWPORT / PERSPECTIVE (simplified PerspectiveModifier)
+-- ============================================
+local function applyViewportMods(nx, ny, nz, nAngle)
+	local stretch = getProperty('stretch.x') or 0
+	if stretch ~= 0 then
+		nx = nx + (nx * stretch)
+	end
+
+	local crZ = (getProperty('centerrotateZ.angle') or 0) * (math.pi / 180)
+	if crZ ~= 0 then
+		local rotX = nx * math.cos(crZ) - ny * math.sin(crZ)
+		local rotY = nx * math.sin(crZ) + ny * math.cos(crZ)
+		nx = rotX
+		ny = rotY
+		nAngle = nAngle + (crZ * 180 / math.pi)
+	end
+
+	local fYaw = (getProperty('fieldYaw.angle') or getProperty('fieldYaw.x') or 0) * (math.pi / 180)
+	if fYaw ~= 0 then
+		local rotX = nx * math.cos(fYaw) - nz * math.sin(fYaw)
+		local rotZ = nx * math.sin(fYaw) + nz * math.cos(fYaw)
+		nx = rotX
+		nz = rotZ
+	end
+
+	local fPitch = (getProperty('fieldPitch.angle') or 0) * (math.pi / 180)
+	if fPitch ~= 0 then
+		local rotY = ny * math.cos(fPitch) - nz * math.sin(fPitch)
+		local rotZ = ny * math.sin(fPitch) + nz * math.cos(fPitch)
+		ny = rotY
+		nz = rotZ
+	end
+
+	nz = nz + ((getProperty('fieldZ.angle') or getProperty('fieldZ.x') or 0) / 1000)
+	ny = ny + (getProperty('fieldY.y') or getProperty('fieldY.x') or 0)
+	nx = nx + (getProperty('fieldX.x') or 0)
+
+	return nx, ny, nz, nAngle
+end
+
+local function getBaseStrumTransform(data)
+	local col = data % keyCount
+	local isPlayer = (data >= keyCount and data < keyCount * 2)
+	local isAux = (data >= keyCount * 2)
+
+	local defaultX = _G['defaultOpponentStrumX'..col]
+	local defaultY = _G['defaultOpponentStrumY'..col]
+
+	if isPlayer or isAux then
+		defaultX = _G['defaultPlayerStrumX'..col]
+		defaultY = _G['defaultPlayerStrumY'..col]
+	end
+
+	if not defaultX then defaultX = (isPlayer and 732 or 92) + col * arrowSize end
+	if not defaultY then defaultY = downscroll and 570 or 50 end
+
+	local startX = defaultX
+	local startY = defaultY
+
+	local centerTargetX = (screenWidth / 2) - ((keyCount / 2 - col - 0.5) * arrowSize)
+
+	local centered = getProperty('centered.x') or 0
+	if centered ~= 0 then
+		if isPlayer or isAux then
+			startX = startX + (centerTargetX - startX) * centered
+		else
+			local outX = -200 - (col * arrowSize)
+			startX = startX + (outX - startX) * centered
+		end
+	end
+
+	local swap = getProperty('opponentSwap.x') or 0
+	if swap ~= 0 then
+		local swapTarget = isPlayer and (_G['defaultOpponentStrumX'..col] or 92 + col * arrowSize) or (_G['defaultPlayerStrumX'..col] or 732 + col * arrowSize)
+		startX = startX + (swapTarget - startX) * swap
+	end
+
+	local flipMod = getProperty('flip.x') or 0
+	if flipMod ~= 0 then
+		local flipTarget = (isPlayer and (_G['defaultPlayerStrumX'..(3-col)] or 732 + (3-col)*arrowSize)) or (_G['defaultOpponentStrumX'..(3-col)] or 92 + (3-col)*arrowSize)
+		startX = startX + (flipTarget - startX) * flipMod
+	end
+
+	local invertMod = getProperty('invert.x') or 0
+	if invertMod ~= 0 then
+		local invertTarget = startX + ((col % 2 == 0) and arrowSize or -arrowSize)
+		startX = startX + (invertTarget - startX) * invertMod
+	end
+
+	return (startX - (screenWidth / 2)), (startY - (screenHeight / 2))
+end
+
+-- ============================================
+-- ON UPDATE POST - MAIN RENDER LOOP
+-- ============================================
+local copyZ = true
+
+function onUpdatePost(elapsed)
+	if not modchart then return end
+
+	local zNear = 0
+	local zFar = 100
+	local zRange = zNear - zFar
+	local tanHalfFOV = math.tan(math.pi / 4)
+
+	local globalDark = getProperty('dark.x') or 0
+	local globalAlpha = getProperty('alpha.x') or 1
+	local scrollMult = getProperty('xmod.x') or 1
+	if scrollMult == 0 then scrollMult = 1 end
+
+	if copyZ then
+		-- ===== STRUMS =====
+		for i = 0, maxStrums - 1 do
+			local baseX, baseY = getBaseStrumTransform(i)
+			local notePosX = baseX
+			local notePosY = baseY
+			local notePosZ = -1
+			local noteAngle = 0
+
+			local offsets = runModifiers(i, 0)
+			notePosX = notePosX + offsets[1]
+			notePosY = notePosY + offsets[2]
+			notePosZ = notePosZ + offsets[3]
+			noteAngle = noteAngle + offsets[4]
+
+			notePosX, notePosY, notePosZ, noteAngle = applyViewportMods(notePosX, notePosY, notePosZ, noteAngle)
+
+			local zPerspectiveOffset = (notePosZ + (2 * zFar * zNear / zRange))
+			if zPerspectiveOffset == 0 then zPerspectiveOffset = -0.001 end
+			local xPerspective = notePosX * (1 / tanHalfFOV) / -zPerspectiveOffset
+			local yPerspective = notePosY * (1 / tanHalfFOV) / -zPerspectiveOffset
+
+			setPropertyFromGroup('strumLineNotes', i, 'x', xPerspective + (screenWidth / 2))
+			setPropertyFromGroup('strumLineNotes', i, 'y', yPerspective + (screenHeight / 2))
+			setPropertyFromGroup('strumLineNotes', i, 'angle', noteAngle)
+
+			local shrinkMulti = (1 - (getProperty('tiny.x') or 0))
+			local sx = (getProperty('scale.x') or 0.7) * shrinkMulti * (1 / -zPerspectiveOffset) * (getProperty('scaleMulti'..i..'.x') or 1)
+			local sy = (getProperty('scale.y') or 0.7) * shrinkMulti * (1 - (getProperty('mini.x') or 0)) * (1 / -zPerspectiveOffset) * (getProperty('scaleMulti'..i..'.y') or 1)
+
+			setPropertyFromGroup('strumLineNotes', i, 'scale.x', sx)
+			setPropertyFromGroup('strumLineNotes', i, 'scale.y', sy)
+
+			local colAlpha = 1 - ((getProperty('stealth.x') or 0) + (getProperty('stealth'..i..'.x') or 0)) - globalDark
+			setPropertyFromGroup('strumLineNotes', i, 'alpha', math.max(0, math.min(1, colAlpha * globalAlpha)))
+		end
+
+		-- ===== NOTES =====
+		local noteCount = getProperty('notes.length')
+		local fakeCrochet = (60 / (bpm or 150)) * 1000
+		local stepCrochetMs = fakeCrochet / 4
+
+		for i = 0, noteCount - 1 do
+			local mustPress = getPropertyFromGroup('notes', i, 'mustPress')
+			local isSustainNote = getPropertyFromGroup('notes', i, 'isSustainNote')
+			local noteData = getPropertyFromGroup('notes', i, 'noteData')
+			local animName = string.lower(getPropertyFromGroup('notes', i, 'animation.curAnim.name') or '')
+			local isSusEnd = string.find(animName, 'end') or string.find(animName, 'tail')
+			local noteType = getPropertyFromGroup('notes', i, 'noteType')
+
+			local notePosZ = -1
+			local strumPos = noteData + keyCount
+			if not mustPress then strumPos = noteData end
+			if noteType == 'Aux' or noteType == 'Synth' then strumPos = noteData + (keyCount * 2) end
+			if strumPos > maxStrums - 1 then strumPos = maxStrums - 1 end
+
+			local baseX, baseY = getBaseStrumTransform(strumPos)
+			local notePosX = baseX
+			local notePosY = baseY
+			local noteAngle = 0
+
+			local curPos = (getSongPosition() - getPropertyFromGroup('notes', i, 'strumTime')) * getProperty('songSpeed')
+
+			-- Reverse-aware scroll direction
+			local noteDist = 0.45
+			local reverseGlobal = getProperty('reverse.y') or 0
+			local reverseCol = getProperty('reverse'..strumPos..'.y') or 0
+			local rev = reverseGlobal + reverseCol
+			if rev ~= 0 then noteDist = noteDist * (1 - (rev * 2)) end
+
+			local fixedDist = downscroll and noteDist * -1 or noteDist
+			local finalScroll = curPos * fixedDist * scrollMult
+
+			-- Brake / Boost
+			local brake = (getProperty('brake.x') or 0) + (getProperty('brake'..strumPos..'.x') or 0)
+			if brake ~= 0 then
+				local distFactor = curPos / 750
+				finalScroll = finalScroll * (1 - (distFactor * brake))
+			end
+			local boost = (getProperty('boost.x') or 0) + (getProperty('boost'..strumPos..'.x') or 0)
+			if boost ~= 0 then
+				local distFactor = curPos / 750
+				finalScroll = finalScroll * (1 + (distFactor * boost))
+			end
+
+			notePosY = notePosY - finalScroll
+
+			if isSustainNote and fixedDist < 0 then
+				setPropertyFromGroup('notes', i, 'flipY', true)
+				if isSusEnd then
+					notePosY = notePosY + 10.5 * (fakeCrochet / 400) * 1.5 * getProperty('songSpeed') + (46 * (getProperty('songSpeed') - 1))
+					notePosY = notePosY - (46 * (1 - (fakeCrochet / 600)) * getProperty('songSpeed'))
+					notePosY = notePosY - 19
+				end
+				notePosY = notePosY + (arrowSize / 2) - (60.5 * (getProperty('songSpeed') - 1))
+				notePosY = notePosY + 27.5 * (((bpm or 150) / 100) - 1) * (getProperty('songSpeed') - 1)
+			else
+				setPropertyFromGroup('notes', i, 'flipY', false)
+			end
+
+			local offsets = runModifiers(strumPos, curPos)
+			notePosX = notePosX + offsets[1]
+			notePosY = notePosY + offsets[2]
+			notePosZ = notePosZ + offsets[3]
+			noteAngle = noteAngle + offsets[4]
+
+			notePosX = notePosX + getPropertyFromGroup('notes', i, 'offsetX')
+
+			notePosX, notePosY, notePosZ, noteAngle = applyViewportMods(notePosX, notePosY, notePosZ, noteAngle)
+
+			local zPerspectiveOffset = (notePosZ + (2 * zFar * zNear / zRange))
+			if zPerspectiveOffset == 0 then zPerspectiveOffset = -0.001 end
+			local xPerspective = notePosX * (1 / tanHalfFOV) / -zPerspectiveOffset
+			local yPerspective = notePosY * (1 / tanHalfFOV) / -zPerspectiveOffset
+
+			setPropertyFromGroup('notes', i, 'x', xPerspective + (screenWidth / 2))
+			setPropertyFromGroup('notes', i, 'y', yPerspective + (screenHeight / 2))
+
+			local shrinkMulti = (1 - (getProperty('tiny.x') or 0))
+			local baseScaleX = (getProperty('scale.x') or 0.7) * shrinkMulti * (1 / -zPerspectiveOffset) * (getProperty('scaleMulti'..strumPos..'.x') or 1)
+			setPropertyFromGroup('notes', i, 'scale.x', baseScaleX)
+
+			if not isSustainNote then
+				setPropertyFromGroup('notes', i, 'scale.y', (getProperty('scale.y') or 0.7) * shrinkMulti * (1 - (getProperty('mini.x') or 0)) * (1 / -zPerspectiveOffset) * (getProperty('scaleMulti'..strumPos..'.y') or 1))
+				setPropertyFromGroup('notes', i, 'angle', noteAngle)
+			else
+				if defaultSusEndScaleY == -1 and isSusEnd then defaultSusEndScaleY = getPropertyFromGroup('notes', i, 'scale.y') end
+				if defaultSusScaleY == -1 and not isSusEnd then defaultSusScaleY = getPropertyFromGroup('notes', i, 'scale.y') end
+
+				if isSusEnd then
+					setPropertyFromGroup('notes', i, 'scale.y', defaultSusEndScaleY * (1 / -zPerspectiveOffset))
+				else
+					setPropertyFromGroup('notes', i, 'scale.y', defaultSusScaleY * (1 / -zPerspectiveOffset))
+				end
+
+				local nextPos = curPos + (stepCrochetMs + (stepCrochetMs / getProperty('songSpeed')))
+				local nFinalScroll = nextPos * fixedDist * scrollMult
+				if brake ~= 0 then
+					nFinalScroll = nFinalScroll * (1 - ((nextPos / 750) * brake))
+				end
+
+				local _, nBaseY = getBaseStrumTransform(strumPos)
+				local nextNoteY = nBaseY - nFinalScroll
+				local nBaseX, _ = getBaseStrumTransform(strumPos)
+				local nextNoteX = nBaseX + getPropertyFromGroup('notes', i, 'offsetX')
+
+				local susOffsets = runModifiers(strumPos, nextPos)
+				nextNoteX = nextNoteX + susOffsets[1]
+				nextNoteY = nextNoteY + susOffsets[2]
+
+				nextNoteX, nextNoteY, _, _ = applyViewportMods(nextNoteX, nextNoteY, notePosZ, noteAngle)
+
+				local nxPerspective = nextNoteX * (1 / tanHalfFOV) / -zPerspectiveOffset
+				local nyPerspective = nextNoteY * (1 / tanHalfFOV) / -zPerspectiveOffset
+
+				nxPerspective = nxPerspective + (screenWidth / 2)
+				nyPerspective = nyPerspective + (screenHeight / 2)
+				local txPerspective = xPerspective + (screenWidth / 2)
+				local tyPerspective = yPerspective + (screenHeight / 2)
+
+				local ang = 0
+				if fixedDist < 0 then
+					ang = math.deg(math.atan2(nyPerspective - tyPerspective, nxPerspective - txPerspective) - math.pi / 2)
+				else
+					ang = math.deg(math.atan2(nyPerspective - tyPerspective, nxPerspective - txPerspective) + math.pi / 2)
+				end
+				setPropertyFromGroup('notes', i, 'angle', ang)
+			end
+
+			local colAlpha = 1 - ((getProperty('stealth.x') or 0) + (getProperty('stealth'..strumPos..'.x') or 0)) - globalDark
+			setPropertyFromGroup('notes', i, 'alpha', math.max(0, math.min(1, colAlpha * globalAlpha * getPropertyFromGroup('notes', i, 'multAlpha'))))
+
+			updateHitboxFromGroup('notes', i)
+		end
+	end
+end
+`;
+
+
 function exportTrollEngineLua() {
   const tracks = state.sequence.tracks || [];
   const songName = state.songName || 'new-song';
@@ -1853,6 +2689,146 @@ function exportTrollEngineLua() {
   lua += `        setProperty("camHUD.y", (((screenHeight - getProperty("camHUD.height")) / 2) + math.random(-shake * hudZoom, shake * hudZoom) / 10000) * getProperty("camHUD.height"))\n`;
   lua += `    end\n`;
   lua += `end\n`;
+
+  return lua;
+}
+
+/* ---------- Vanilla Psych export (uses EnhancedModchartTemplate events) ---------- */
+function psychModToSpriteAxis(mod){
+  // Map editor modifier names to (spriteName, axis) used by EnhancedModchartTemplate
+  // axis: 'x' | 'y' | 'angle'
+  const m = (mod || '').toLowerCase();
+  // explicit overrides
+  const map = {
+    transformx: ['transformX','x'], transformy: ['transformY','y'], transformz: ['transformZ','angle'],
+    x: ['transformX','x'], y: ['transformY','y'], z: ['transformZ','angle'],
+    xoffset: ['strumOffset','x'], yoffset: ['strumOffset','y'], zoffset: ['strumOffset','angle'],
+    drunk: ['drunk','x'], drunkz: ['drunk','angle'],
+    tipsy: ['tipsy','y'], tipsyx: ['tipsy','x'], tipsyz: ['tipsy','angle'],
+    bumpy: ['bumpy','y'], bumpyx: ['bumpy','x'],
+    tornado: ['tornado','x'], zigzag: ['zigzag','x'], square: ['square','x'],
+    sine: ['sine','y'], bounce: ['bounce','y'], brake: ['brake','y'], boost: ['boost','y'],
+    wave: ['wave','y'], beat: ['beat','y'], beaty: ['beat','y'],
+    reverse: ['reverse','y'],
+    stealth: ['stealth','x'], sudden: ['stealth','x'], dark: ['dark','x'], alpha: ['alpha','x'],
+    confusion: ['confusion','angle'], confusionoffset: ['confusionOffset','angle'],
+    mini: ['mini','x'], tiny: ['tiny','x'], stretch: ['stretch','x'], squish: ['stretch','y'],
+    flip: ['flip','x'], invert: ['invert','x'], centered: ['centered','x'],
+    opponentswap: ['opponentSwap','x'], xmod: ['xmod','x'],
+    fieldyaw: ['fieldYaw','x'], fieldy: ['fieldY','y'], fieldz: ['fieldZ','angle'],
+    fieldroll: ['fieldRoll','angle'], fieldpitch: ['fieldPitch','angle'],
+    spiral: ['spiral','x'],
+    rotatex: ['confusion','x'], rotatey: ['confusion','y'], rotatez: ['confusion','angle'],
+    centerrotatez: ['centerrotateZ','angle'], centerrotatex: ['centerrotateX','x'], centerrotatey: ['centerrotateY','y']
+  };
+  if(map[m]) return map[m];
+  // lane-specific: drunk0, reverse1, transform2X etc.
+  const laneMatch = m.match(/^(.*?)(\d)$/);
+  if(laneMatch){
+    const base = laneMatch[1];
+    const lane = laneMatch[2];
+    const [spr, ax] = psychModToSpriteAxis(base);
+    return [spr + lane, ax];
+  }
+  // transform0X style
+  const tMatch = m.match(/^transform(\d)([xyz])$/);
+  if(tMatch){
+    const axis = tMatch[2] === 'x' ? 'x' : (tMatch[2] === 'y' ? 'y' : 'angle');
+    return ['transform' + tMatch[1] + (tMatch[2].toUpperCase()), axis];
+  }
+  // default: treat as X on a sprite of the same name
+  return [mod, 'x'];
+}
+
+function exportVanillaPsychLua(){
+  const tracks = state.sequence.tracks || [];
+  const songName = state.songName || 'new-song';
+  const bpm = state.bpm || 150;
+  const stepCrochetSec = (60 / bpm) / 4; // seconds per step
+
+  let lua = '';
+  lua += `-- Vanilla Psych Modchart Sequence\n`;
+  lua += `-- Song: ${songName} | BPM: ${bpm}\n`;
+  lua += `-- Generated by faithful Modchart Editor\n`;
+  lua += `--\n`;
+  lua += `-- REQUIREMENTS:\n`;
+  lua += `--   1. Place EnhancedModchartTemplate.lua in the same scripts/ folder\n`;
+  lua += `--      (or install FNF-Modcharting-Tools which provides equivalent runtime).\n`;
+  lua += `--   2. Load the template BEFORE this sequence (Psych loads all .lua in scripts/).\n`;
+  lua += `--   3. The template exposes setModifierX/Y/Z and easeModifierX/Y/Z events.\n\n`;
+
+  lua += `local function secFromSteps(steps)\n`;
+  lua += `    return steps * (${stepCrochetSec})\n`;
+  lua += `end\n\n`;
+
+  // Collect all set / ease actions sorted by step
+  const actions = [];
+
+  for(const t of tracks){
+    if(!t.keyframes || !t.keyframes.length) continue;
+
+    const isLane = (t.target||'').startsWith('lane');
+    let baseMod = t.modifier || 'transformX';
+    if(isLane) baseMod = baseMod + t.target.substr(4);
+
+    const [sprite, axis] = psychModToSpriteAxis(baseMod);
+    const tagSet = axis === 'x' ? 'setModifierX' : (axis === 'y' ? 'setModifierY' : 'setModifierZ');
+    const tagEase = axis === 'x' ? 'easeModifierX' : (axis === 'y' ? 'easeModifierY' : 'easeModifierZ');
+
+    const kfs = t.keyframes.slice().sort((a,b) => a.step - b.step);
+    for(const k of kfs){
+      const mode = k.mode || 'both';
+      const easeName = k.ease || 'quadOut';
+      const durSteps = k.duration || 0;
+      const durSec = durSteps * stepCrochetSec;
+
+      if(mode === 'set' || mode === 'both'){
+        actions.push({
+          step: k.step,
+          kind: 'set',
+          tag: tagSet,
+          val1: sprite,
+          val2: String(k.value)
+        });
+      }
+      if((mode === 'ease' || mode === 'both') && durSteps > 0){
+        const endVal = (mode === 'both') ? 0 : k.value;
+        // template expects: val1 = "name,value"  val2 = "time,ease"
+        actions.push({
+          step: k.step,
+          kind: 'ease',
+          tag: tagEase,
+          val1: sprite + ',' + endVal,
+          val2: durSec.toFixed(4) + ',' + easeName
+        });
+      }
+    }
+  }
+
+  actions.sort((a,b) => a.step - b.step);
+
+  lua += `-- Scheduled modifier actions (step -> event)\n`;
+  lua += `function onStepHit()\n`;
+  if(actions.length === 0){
+    lua += `    -- (no keyframes)\n`;
+  } else {
+    // Group by integer step for cleaner ifs
+    let lastStep = null;
+    for(const a of actions){
+      const s = Math.round(a.step * 1000) / 1000; // keep precision
+      if(s !== lastStep){
+        if(lastStep !== null) lua += `    end\n`;
+        lua += `    if curStep == ${formatNum(s)} then\n`;
+        lastStep = s;
+      }
+      lua += `        triggerEvent('${a.tag}', '${a.val1}', '${a.val2}')\n`;
+    }
+    if(lastStep !== null) lua += `    end\n`;
+  }
+  lua += `end\n\n`;
+
+  lua += `-- Optional: continuous / onUpdate helpers can be added here if needed.\n`;
+  lua += `-- The EnhancedModchartTemplate already runs runModifiers every frame.\n`;
 
   return lua;
 }
@@ -2356,6 +3332,43 @@ function wireInspector(){
     });
   }
 
+  /* Engine selection modal (Lua export) */
+  function showEngineModal(){
+    if(dom.engineModalOverlay) dom.engineModalOverlay.classList.add('show');
+  }
+  function hideEngineModal(){
+    if(dom.engineModalOverlay) dom.engineModalOverlay.classList.remove('show');
+  }
+  if(dom.engineBtnCancel){
+    dom.engineBtnCancel.addEventListener('click', hideEngineModal);
+  }
+  if(dom.engineModalOverlay){
+    dom.engineModalOverlay.addEventListener('click', e=>{
+      if(e.target === dom.engineModalOverlay) hideEngineModal();
+    });
+  }
+  if(dom.engineBtnTroll){
+    dom.engineBtnTroll.addEventListener('click', ()=>{
+      downloadFile(state.songName+'_sequence.lua', exportTrollEngineLua(), 'text/x-lua');
+      flashStatus('Exported Troll Engine Lua');
+      hideEngineModal();
+    });
+  }
+  if(dom.engineBtnPsych){
+    dom.engineBtnPsych.addEventListener('click', ()=>{
+      const seq = exportVanillaPsychLua();
+      downloadFile(state.songName+'_psych_sequence.lua', seq, 'text/x-lua');
+      // Also download the required template so the user has everything needed
+      if(typeof ENHANCED_MODCHART_TEMPLATE === 'string' && ENHANCED_MODCHART_TEMPLATE.length > 100){
+        setTimeout(()=>{
+          downloadFile('EnhancedModchartTemplate.lua', ENHANCED_MODCHART_TEMPLATE, 'text/x-lua');
+        }, 350);
+      }
+      flashStatus('Exported Vanilla Psych sequence + template');
+      hideEngineModal();
+    });
+  }
+
   if(dom.chkCont){
     dom.chkCont.addEventListener('change', ()=>{
       const t = state.selectedTrack; if(!t) return;
@@ -2400,8 +3413,7 @@ function wireInspector(){
   dom.btnPlay.addEventListener('click', togglePlay);
   dom.btnStop.addEventListener('click', stopPlayback);
   dom.btnExportLua.addEventListener('click', ()=>{
-    downloadFile(state.songName+'_sequence.lua', exportTrollEngineLua(), 'text/x-lua');
-    flashStatus('Exported Lua');
+    showEngineModal();
   });
   dom.btnExportJson.addEventListener('click', exportJSON);
   if(dom.btnExportHscript){
@@ -2532,6 +3544,10 @@ function init(){
     modalSaveHscript: $('modal-save-hscript'),
     modalDiscard: $('modal-discard'),
     modalCancel: $('modal-cancel'),
+    engineModalOverlay: $('engine-modal-overlay'),
+    engineBtnTroll: $('engine-btn-troll'),
+    engineBtnPsych: $('engine-btn-psych'),
+    engineBtnCancel: $('engine-btn-cancel'),
     tlScroll:$('tl-scroll'), rulerWrap:$('ruler-wrap'), rulerCanvas:$('ruler'),
     headers:$('tl-headers'), lanes:$('tl-lanes'), gridCanvas:$('grid'),
     kfLayer:$('kf-layer'), playhead:$('playhead'),
