@@ -854,22 +854,22 @@ function computeReceptor(engine, player, data, beat, timeSec){
   y += tY !== 0 ? tY : (mod("y") + mod("yoffset"));
   const zAmt = tZ !== 0 ? tZ : (mod("z") + mod("zoffset"));
   if (zAmt !== 0) {
-    // Z-axis illusion = mini-style scale + outward push from field centre
-    // (same visual language as flip spread + opponentSwap @ ~0.5)
-    const s = 1 + zAmt * 0.004;
+
+    // 1. scale
+    const s = 1 + zAmt * 0.12;
     scaleX *= s;
     scaleY *= s;
 
-    // Centre of this player's 4 receptors (same base layout as flip / opponentSwap)
+    // 2. local outward / collapse (still relative to this players own centre)
     const fieldCenterX = player === 0
       ? (90 + SWAG * 1.5)
       : (730 + SWAG * 1.5);
+    const local = zAmt * 0.12;         
+    x += (x - fieldCenterX) * local;
+    y += (y - 360) * local * 0.35;
 
-    // Positive Z expands away from centre; negative Z collapses toward it
-    const outward = zAmt * 0.008;
-    x += (x - fieldCenterX) * outward;
-    // mild vertical depth so it doesn't feel purely horizontal
-    y += (y - 360) * outward * 0.35;
+    const ox = 4.85 + SWAG * data, px = 43 + SWAG * data;
+    x += (player === 0 ? ox - px : px - ox) * zAmt;
   }
 
   // ---------- Confusion (local per-note/receptor spin – ConfusionModifier) ----------
