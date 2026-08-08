@@ -92,12 +92,19 @@ label.check { flex-direction: row; align-items: center; gap: 6px; color: var(--t
 
 /* top bar */
 #topbar {
-  display: flex; align-items: center; gap: 12px;
+  display: flex; align-items: center; gap: 10px;
   padding: 0 12px; height: 46px;
   background: linear-gradient(180deg, #1a1f2e, #0f1219);
   border-bottom: 1px solid var(--border);
   flex: none; z-index: 20;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: #2b3247 transparent;
 }
+#topbar::-webkit-scrollbar { height: 6px; }
+#topbar::-webkit-scrollbar-thumb { background: #2b3247; border-radius: 3px; }
+#topbar::-webkit-scrollbar-track { background: transparent; }
 .brand {
   font-weight: 800; letter-spacing: 2.5px; font-size: 15px;
   background: linear-gradient(90deg, var(--accent), var(--accent-2));
@@ -105,17 +112,23 @@ label.check { flex-direction: row; align-items: center; gap: 6px; color: var(--t
   white-space: nowrap;
 }
 .brand span { opacity: 0.45; }
-#topbar .group { display: flex; align-items: center; gap: 6px; }
+#topbar .group {
+  display: flex; align-items: center; gap: 6px;
+  flex: none; /* don't crush buttons — scroll instead */
+  white-space: nowrap;
+}
 #topbar .group label { flex-direction: row; align-items: center; gap: 6px; }
 .clock {
   font-size: 12px; color: var(--muted); white-space: nowrap;
   background: var(--panel); border: 1px solid var(--border);
   border-radius: 6px; padding: 5px 10px;
+  flex: none;
 }
-.spacer { flex: 1; }
+.spacer { flex: 1 0 12px; min-width: 8px; }
 .audio-label {
   max-width: 140px; overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; color: var(--muted); font-size: 11px;
+  flex: none;
 }
 
 /* main layout */
@@ -228,6 +241,49 @@ main {
 }
 #status.show { opacity: 1; transform: translate(-50%, 0); }
 
+
+/* events */
+.event-marker {
+  position: absolute; top: 2px; bottom: 2px; width: 8px;
+  border-radius: 2px; cursor: pointer; pointer-events: auto;
+  border: 1px solid rgba(0,0,0,0.45);
+  z-index: 6;
+}
+.event-marker.selected {
+  outline: 2px solid #ffd500;
+  box-shadow: 0 0 8px rgba(255,213,0,0.65);
+}
+.event-marker:hover { filter: brightness(1.2); }
+#classic-panels {
+  display: flex; flex-direction: column; gap: 10px;
+}
+#classic-panels.hidden { display: none !important; }
+#event-panel { display: none; }
+#event-panel.show { display: flex; }
+.panel-close {
+  background: transparent; border: 1px solid var(--border);
+  color: var(--muted); padding: 2px 8px; border-radius: 6px;
+  font-size: 12px; line-height: 1;
+}
+.panel-close:hover { border-color: var(--danger); color: #ff8a8a; }
+#evt-code {
+  width: 100%; min-height: 120px; resize: vertical;
+  font-family: inherit; font-size: 11px; line-height: 1.35;
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text); padding: 8px;
+}
+#evt-list {
+  max-height: 140px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;
+}
+.evt-row {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 6px; border-radius: 6px; cursor: pointer;
+  border: 1px solid transparent; font-size: 11px;
+}
+.evt-row:hover { background: rgba(255,255,255,0.04); }
+.evt-row.selected { background: rgba(90,150,255,0.14); border-color: var(--border); }
+.evt-dot { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: #0d0f14; }
 ::-webkit-scrollbar-thumb { background: #2b3247; border-radius: 5px; }
@@ -253,6 +309,7 @@ main {
   <div class="group">
     <button id="btn-new" title="New project">New</button>
     <button id="btn-add-track" title="Add track">+ Track</button>
+    <button id="btn-add-event" title="Add timed event (func / funcOnce / blankMod)">+ Event</button>
     <button id="btn-export-lua" title="Export Lua">Lua</button>
     <button id="btn-export-json" title="Export sequence.json">JSON</button>
     <button id="btn-export-hscript" title="Export HScript">HScript</button>
@@ -275,6 +332,7 @@ main {
     <canvas id="preview" width="1280" height="720"></canvas>
   </section>
   <aside id="inspector">
+    <div id="classic-panels">
     <section class="panel">
       <h2>Sequence</h2>
       <div class="row">
@@ -334,6 +392,95 @@ main {
       <div class="row">
         <label>Start <input id="inp-cont-start" type="number" step="any"></label>
         <label>End <input id="inp-cont-end" type="number" step="any"></label>
+      </div>
+    </section>
+    </div><!-- /classic-panels -->
+
+    <div id="event-panel" class="panel" style="flex-direction:column; gap:8px;">
+      <h2>
+        Event Settings
+        <button id="btn-close-event" class="panel-close" title="Back to modchart settings">✕</button>
+      </h2>
+      <label>Preset (like Chart Editor events)
+        <select id="sel-evt-preset">
+          <option value="">(custom / none)</option>
+          <option value="proxyShow">ProxyField Show</option>
+          <option value="proxyHide">ProxyField Hide</option>
+          <option value="haloContinuous">Continuous Halo</option>
+          <option value="blank_camZoom">Blank Mod: camZoom</option>
+          <option value="blank_hudCamAngle">Blank Mod: hudCamAngle</option>
+          <option value="blank_haloRadiusX">Blank Mod: haloRadiusX</option>
+          <option value="blank_haloRadiusZ">Blank Mod: haloRadiusZ</option>
+          <option value="blank_haloSpeed">Blank Mod: haloSpeed</option>
+          <option value="blank_blackScreen">Blank Mod: blackScreen</option>
+          <option value="blank_tipsyX">Blank Mod: tipsyX</option>
+          <option value="blank_tipsyZ">Blank Mod: tipsyZ</option>
+          <option value="blank_bumpyX">Blank Mod: bumpyX</option>
+          <option value="blank_bumpyPeriod">Blank Mod: bumpyPeriod</option>
+          <option value="funcOnce">Func Once (raw)</option>
+          <option value="func">Func Range (raw)</option>
+          <option value="blankMod">Blank Mod (custom name)</option>
+        </select>
+      </label>
+      <label>Type
+        <select id="sel-evt-type">
+          <option value="funcOnce">Func Once (queueFuncOnce)</option>
+          <option value="func">Func Range (queueFunc)</option>
+          <option value="blankMod">Blank Mod (registerBlankMod)</option>
+        </select>
+      </label>
+      <label>Name <input id="inp-evt-name" type="text" spellcheck="false" placeholder="e.g. ProxyField Show"></label>
+      <div class="row">
+        <label>Step <input id="inp-evt-step" type="number" step="any"></label>
+        <label>End Step <input id="inp-evt-end" type="number" step="any" title="Used by Func Range"></label>
+      </div>
+      <div class="row" id="blank-mod-row" style="display:none">
+        <label>Mod Name <input id="inp-evt-modname" type="text" spellcheck="false" placeholder="camZoom"></label>
+        <label>Default <input id="inp-evt-default" type="number" step="any" value="0"></label>
+      </div>
+      <label>Code / body
+        <textarea id="evt-code" placeholder="// HScript body for the callback&#10;// Available: event, step, modMgr, setValue, qSet, qEase, proxies, game, ..."></textarea>
+      </label>
+      <div class="row">
+        <label>Color <input id="inp-evt-color" type="color" value="#ff9800"></label>
+        <label class="check"><input id="chk-evt-visible" type="checkbox" checked> visible</label>
+      </div>
+      <button id="btn-remove-event" class="danger">Remove Event</button>
+      <div style="margin-top:6px;color:var(--muted);font-size:10px;line-height:1.35">
+        Presets work like the classic Chart Editor event list: pick ProxyField Show/Hide, Continuous Halo, or a Blank Mod, then place at the playhead.
+        Func → <code>qFunc</code>/<code>qFuncOnce</code>. Blank mods → <code>postModifierRegister</code>. Close ✕ for tracks.
+      </div>
+    </div>
+
+    <section class="panel" id="events-list-panel">
+      <h2>Events <span id="evt-count" style="text-transform:none;letter-spacing:0;font-size:10px;color:var(--muted)"></span></h2>
+      <div id="evt-list"></div>
+      <button id="btn-add-event-2" style="margin-top:6px">+ Add Event</button>
+    </section>
+
+    <section class="panel" id="runtime-panel">
+      <h2>Runtime (extra)</h2>
+      <label class="check"><input id="chk-enable-proxies" type="checkbox"> Enable ProxyFields skeleton</label>
+      <label class="check"><input id="chk-enable-helpers" type="checkbox" checked> Include numericForInterval / mathRad helpers</label>
+      <div class="row" style="margin-top:4px">
+        <button id="btn-enable-proxies-shell" title="Turn on ProxyFields export skeleton only (no timeline events)">Enable Proxies shell</button>
+        <button id="btn-clear-runtime" class="danger" title="Clear runtime fields">Clear</button>
+      </div>
+      <label>Blank mods registered
+        <div id="blank-mods-list" style="max-height:90px;overflow-y:auto;font-size:10px;color:var(--muted);line-height:1.4;background:var(--panel-2);border:1px solid var(--border);border-radius:6px;padding:6px;margin-top:2px">
+          (none — add Blank Mod events from the Events list)
+        </div>
+      </label>
+      <label>onUpdate body
+        <textarea id="inp-onupdate" style="width:100%;min-height:70px;resize:vertical;font-family:inherit;font-size:11px;background:var(--panel-2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:6px" placeholder="// runs every frame&#10;// e.g. game.camGame.zoom = modMgr.getValue(&quot;camZoom&quot;, 0);"></textarea>
+      </label>
+      <label>postReceptorGeneration body
+        <textarea id="inp-postreceptor" style="width:100%;min-height:60px;resize:vertical;font-family:inherit;font-size:11px;background:var(--panel-2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:6px" placeholder="// optional extra code after default proxy setup"></textarea>
+      </label>
+      <div style="color:var(--muted);font-size:10px;line-height:1.35">
+        Runtime shell toggles only (export structure). Timeline actions belong in <b>Events</b> —
+        use the Preset dropdown (ProxyField Show/Hide, Continuous Halo, Blank Mods…) like the classic Chart Editor event list.
+        Place them at the playhead with <b>+ Event</b>.
       </div>
     </section>
   </aside>
@@ -408,7 +555,7 @@ const laneColors = ['#c44bff','#3dcfff','#35ff5a','#ff5a3d'];
 const dirAngle = [-Math.PI/2, Math.PI, 0, Math.PI/2];
 
 const modifierList = [
-  // Core transforms
+  // === Core transforms (TransformModifier + aux) ===
   "transformX","transformY","transformZ",
   "transform0X","transform0Y","transform0Z",
   "transform1X","transform1Y","transform1Z",
@@ -416,47 +563,93 @@ const modifierList = [
   "transform3X","transform3Y","transform3Z",
   "x","y","z","xoffset","yoffset","zoffset",
 
-  // Confusion / rotation
-  "confusion","confusionOffset","confusionOffset0","confusionOffset1","confusionOffset2","confusionOffset3",
-  "confusionzoffset","rotatex","rotatey","rotatez",
-  "centerrotateX","centerrotateY","centerrotateZ","centerrotate",
+  // === Confusion / rotation (ConfusionModifier, RotateModifier, LocalRotate, center) ===
+  "confusion","confusionOffset",
+  "confusion0","confusion1","confusion2","confusion3",
+  "confusionOffset0","confusionOffset1","confusionOffset2","confusionOffset3",
+  "confusionX","confusionY","confusionZ",
+  "confusionXOffset","confusionYOffset","confusionZOffset",
+  "confusionX0","confusionX1","confusionX2","confusionX3",
+  "confusionY0","confusionY1","confusionY2","confusionY3",
+  "confusionXOffset0","confusionXOffset1","confusionXOffset2","confusionXOffset3",
+  "confusionYOffset0","confusionYOffset1","confusionYOffset2","confusionYOffset3",
+  "rotateX","rotateY","rotateZ","rotatex","rotatey","rotatez",
+  "centerrotate","centerrotateX","centerrotateY","centerrotateZ",
   "center0rotateX","center1rotateX","center2rotateX","center3rotateX",
+  "center0rotateY","center1rotateY","center2rotateY","center3rotateY",
+  "center0rotateZ","center1rotateZ","center2rotateZ","center3rotateZ",
+  "localrotateX","localrotateY","localrotateZ",
 
-  // Alpha / dark / stealth
+  // === Alpha / dark / stealth (AlphaModifier) ===
   "alpha","alpha0","alpha1","alpha2","alpha3",
-  "dark","dark0","dark1","dark2","dark3",
-  "stealth","sudden","suddenOffset","hidden","hiddenOffset","blink","randomVanish",
+  "dark","dark0","dark1","dark2","dark3","darkSplashes",
+  "stealth","stealth0","stealth1","stealth2","stealth3",
+  "sudden","sudden0","sudden1","sudden2","sudden3",
+  "suddenOffset","suddenOffset0","suddenOffset1","suddenOffset2","suddenOffset3",
+  "hidden","hiddenOffset","blink","randomVanish",
   "stealthPastReceptors","hideStealthGlow","hideDarkGlow",
   "noteAlpha","noteAlpha0","noteAlpha1","noteAlpha2","noteAlpha3",
 
-  // Reverse family
+  // === Reverse family (ReverseModifier) ===
   "reverse","reverse0","reverse1","reverse2","reverse3","unboundedReverse",
   "split","alternate","cross","receptorscroll",
 
-  // Flip / invert / centered / scale
-  "flip","invert","centered","mini","tiny","tinyx","tinyy",
+  // === Flip / invert / centered / scale (ScaleModifier, SwapModifier) ===
+  "flip","invert","centered","opponentSwap",
+  "mini","tiny","tinyx","tinyy","tiny0","tiny1","tiny2","tiny3",
   "squish","stretch","miniX","miniY",
+  "scale","scaleX","scaleY",
+  "scale0","scale1","scale2","scale3",
+  "scale0X","scale1X","scale2X","scale3X",
+  "scale0Y","scale1Y","scale2Y","scale3Y",
 
-  // Classic NotITG / Troll wave mods
-  "tipsy","tipsyX","tipsyZ","tipsyZ0","tipsyZ1","tipsyZ2","tipsyZ3","tipsySpeed","tipsyOffset",
-  "drunk","drunkZ","drunkSpeed","drunkOffset","drunkPeriod",
-  "bumpy","bumpyX","bumpyPeriod","bumpyXPeriod",
+  // === Drunk / Tipsy / Bumpy (DrunkModifier) ===
+  "drunk","drunkX","drunkY","drunkZ",
+  "drunkSpeed","drunkOffset","drunkPeriod",
+  "drunkXSpeed","drunkYSpeed","drunkZSpeed",
+  "drunkXOffset","drunkYOffset","drunkZOffset",
+  "drunkXPeriod","drunkYPeriod","drunkZPeriod",
+  "tipsy","tipsyX","tipsyY","tipsyZ",
+  "tipsyZ0","tipsyZ1","tipsyZ2","tipsyZ3",
+  "tipsySpeed","tipsyOffset",
+  "tipsyXSpeed","tipsyYSpeed","tipsyZSpeed",
+  "tipsyXOffset","tipsyYOffset","tipsyZOffset",
+  "bumpy","bumpyX","bumpyY","bumpyZ",
+  "bumpyPeriod","bumpyXPeriod","bumpyYPeriod","bumpyZPeriod",
+  "bumpyOffset","bumpyXOffset","bumpyYOffset","bumpyZOffset",
+
+  // === Wave / path / motion ===
   "zigzag","sawtooth","square","bounce","brake","boost","tornado","wave",
   "wiggle","distortwiggle","distortwigglescratch","distortwiggleperiod",
-
-  // Path / special
-  "xmod","opponentSwap","beat","beatY","beatOffset","beatMult",
-  "arrowshape","arrowshapeoffset","eyeshape","eyeshapeoffset",
+  "beat","beatY","beatOffset","beatMult",
   "spiral","spiraldist","counterclockwise","vibrate",
-  "arrowpath","arrowpath0",
+  "arrowpath","arrowpath0","arrowshape","arrowshapeoffset","eyeshape","eyeshapeoffset",
+  "movePath","movePathType","transformPath","centeredPath","centered2",
+  "spiralHolds","orient","alwaysDraw","lookAheadTime","movePastReceptors",
 
-  // Camera / field
-  "camZoom","hudCamZoom","gameCamZoom","hudCamAngle","gameCamAngle",
+  // === Speed / spawn (aux) ===
+  "xmod","xmod0","xmod1","xmod2","xmod3",
+  "cmod","cmod0","cmod1","cmod2","cmod3",
+  "noteSpawnTime","noteSpawnTime0","noteSpawnTime1","noteSpawnTime2","noteSpawnTime3",
+  "drawDistance","disableDrawDistMult",
+  "flashR","flashG","flashB",
+  "flash0R","flash0G","flash0B","flash1R","flash1G","flash1B",
+  "flash2R","flash2G","flash2B","flash3R","flash3G","flash3B",
+
+  // === Perspective / zoom / skew / snap ===
+  "fieldYaw","fieldPitch","fieldRoll","fieldX","fieldY","fieldZ",
+  "zoom","camZoom","hudCamZoom","gameCamZoom","hudCamAngle","gameCamAngle",
   "camgameoverride","camgameoverridex","camgameoverridey","camgamezoom",
   "camgamerm","camgamermx","camgamermy",
-  "fieldYaw","fieldY","fieldZ","fieldRoll","fieldPitch","fieldX",
+  "skewX","skewY","snapX","snapY","snapZ",
+  "snapXInterval","snapYInterval","snapZInterval",
+
+  // === Halo / custom blank-mod style (used by bludlus continuous loop) ===
   "haloRadiusX","haloRadiusZ","haloSpeed",
-  "kadeWave","hudShake","blackScreen"
+  "kadeWave","hudShake","blackScreen",
+
+  // === Schmovin / optional ===
+  "schmovinDrunk","schmovinTipsy","schmovinBumpy"
 ];
 
 const easeList = [
@@ -901,22 +1094,68 @@ function computePos(engine, player, data, beat, timeSec, visualDiff, isReceptor)
     x += (player === 0 ? px - ox : ox - px) * os;
   }
 
-  // ---------- Transform (TransformModifier) – pure offset, same for notes & receptors ----------
-  const tX = mod("transformX") + mod("transform" + data + "X");
-  const tY = mod("transformY") + mod("transform" + data + "Y");
-  const tZ = mod("transformZ") + mod("transform" + data + "Z");
+  // ---------- Transform (TransformModifier.hx) ----------
+  // pos.x += transformX + transform{data}X  (same for Y/Z)
+  // pos also gets moveX * swagWidth etc. — omitted unless those mods are used.
+  let tX = mod("transformX") + mod("transform" + data + "X");
+  let tY = mod("transformY") + mod("transform" + data + "Y");
+  let tZ = mod("transformZ") + mod("transform" + data + "Z");
+
+  // ---------- Halo (custom blank mods + continuous qFunc, NOT a built-in modifier) ----------
+  // Matches bludlus / engine runtime:
+  //   setValue("transform"+col+"X", radiusX * Math.sin(input) * speed);  // OVERWRITES col X
+  //   setValue("transform"+col+"Z", radiusZ * Math.cos(input) * speed);  // OVERWRITES col Z
+  //   input = (col + 1 + beat) * mathRad(360/4) = (col+1+beat) * (PI/2)
+  // getValue(name, player) — second arg is player index, not a default.
+  // speed scales amplitude (not angular frequency); phase advances 90° per beat.
+  const haloSpeed = mod("haloSpeed");
+  if (haloSpeed !== 0) {
+    const radiusX = mod("haloRadiusX");
+    const radiusZ = mod("haloRadiusZ");
+    const input = (data + 1 + beat) * (Math.PI / 2); // mathRad(90)
+    // Overwrite column components (same as setValue on transform{col}*)
+    tX = mod("transformX") + radiusX * Math.sin(input) * haloSpeed;
+    tZ = mod("transformZ") + radiusZ * Math.cos(input) * haloSpeed;
+  }
+
   x += tX !== 0 ? tX : (mod("x") + mod("xoffset"));
   y += tY !== 0 ? tY : (mod("y") + mod("yoffset"));
   const zAmt = tZ !== 0 ? tZ : (mod("z") + mod("zoffset"));
-  if (zAmt !== 0) {
-    const s = 1 + zAmt * 0.12;
-    scaleX *= s; scaleY *= s;
-    const fieldCenterX = player === 0 ? (90 + SWAG * 1.5) : (730 + SWAG * 1.5);
-    const local = zAmt * 0.12;
-    x += (x - fieldCenterX) * local;
-    y += (y - 360) * local * 0.35;
-    const ox2 = 4.85 + SWAG * data, px2 = 43 + SWAG * data;
-    x += (player === 0 ? ox2 - px2 : px2 - ox2) * zAmt;
+
+  // ---------- Z via PerspectiveModifier + VectorHelpers.project ----------
+  // Engine (PerspectiveModifier, order LAST+1000):
+  //   pos.decrementBy(origin)           // origin = (width/2, height/2)
+  //   rotate by fieldPitch/Yaw/Roll
+  //   pos.decrementBy(fieldPos)         // fieldPos.z = 1280 + fieldZ  (default depth)
+  //   VectorHelpers.project(pos, 1280):
+  //     z' = pos.z / -cameraMaxSize
+  //     x' = pos.x / z'
+  //     y' = pos.y / z'
+  //   pos.incrementBy(origin)
+  // TransformModifier runs before perspective, so transformZ is in pos.z before project.
+  if (zAmt !== 0 || mod("fieldZ") !== 0 || mod("fieldYaw") !== 0 || mod("fieldPitch") !== 0 || mod("fieldRoll") !== 0) {
+    const originX = 640, originY = 360; // FlxG.width/height * 0.5 at 1280x720
+    const depth = 1280;
+    const legacy = mod("legacyZAxis") > 0;
+    const camSize = legacy ? 1 : depth;
+    let px = x - originX;
+    let py = y - originY;
+    let pz = zAmt; // relative z before field depth
+    // field offsets (PerspectiveModifier fieldPos is negated on apply)
+    px -= -mod("fieldX");
+    py -= -mod("fieldY");
+    pz -= (camSize + mod("fieldZ"));
+    // project
+    let zp = pz / -camSize;
+    if (Math.abs(zp) < 1e-4) zp = (zp < 0 ? -1e-4 : 1e-4);
+    px = px / zp;
+    py = py / zp;
+    x = px + originX;
+    y = py + originY;
+    // apparent size scales with 1/z' (closer → larger)
+    const s = 1 / zp;
+    scaleX *= s;
+    scaleY *= s;
   }
 
   // ---------- Confusion (angle only) ----------
@@ -1058,7 +1297,10 @@ const state = {
   sequence: null,
   selectedTrack: null,
   selected: [],
+  selectedEvent: null,
+  inspectorMode: 'track', // 'track' | 'event'
   kfEls: new Map(),
+  evtEls: new Map(),
   curQuant: 16,
   curZoom: 1,
   songPos: 0,
@@ -1074,6 +1316,7 @@ const state = {
   pulse: 0,
   scrollX: 0,
   kfId: 1,
+  evtId: 1,
   drag: null,
   scrub: false,
   needsGrid: true,
@@ -1085,6 +1328,97 @@ const state = {
   showChartNotes: true,
   showGuides: true
 };
+
+const eventTypeLabels = {
+  funcOnce: 'Func Once',
+  func: 'Func Range',
+  blankMod: 'Blank Mod'
+};
+
+/* Chart-Editor-style event presets (templates only — placed at playhead, not fixed steps) */
+const EVENT_PRESETS = {
+  proxyShow: {
+    type: 'funcOnce',
+    name: 'ProxyField Show',
+    color: '#ff9800',
+    code: [
+      'game.dadField.noteField.alpha = 0;',
+      'for (i in 0...proxies.length) {',
+      '    proxies[i].visible = true;',
+      '    proxies[i].alpha = (i % 2 == 0) ? 0.6 : 1.0;',
+      '}'
+    ].join('\n')
+  },
+  proxyHide: {
+    type: 'funcOnce',
+    name: 'ProxyField Hide',
+    color: '#ff5a5a',
+    code: [
+      'game.dadField.noteField.alpha = 1;',
+      'for (i in 0...proxies.length) {',
+      '    proxies[i].alpha = 0;',
+      '    proxies[i].visible = false;',
+      '}'
+    ].join('\n')
+  },
+  haloContinuous: {
+    type: 'func',
+    name: 'Continuous Halo',
+    color: '#4fc3f7',
+    duration: 140, // default range length in steps (user can edit)
+    // Exact bludlus / engine formula:
+    // getValue(name, playerIndex) — 0 = player 0 (blank mods are shared when registered with -1)
+    // setValue overwrites transform{col}X/Z every frame; speed multiplies amplitude, not frequency
+    // phase = (col+1+beat) * 90deg → full orbit every 4 beats, columns 90deg apart
+    code: [
+      'var beat = step / 4;',
+      'for (col in 0...4) {',
+      '    var speed = modMgr.getValue("haloSpeed", 0); // player 0',
+      '    var input = (col + 1 + beat) * mathRad(360 / 4); // == (col+1+beat)*(Math.PI/2)',
+      '    var radiusX = modMgr.getValue("haloRadiusX", 0);',
+      '    var radiusZ = modMgr.getValue("haloRadiusZ", 0);',
+      '    // OVERWRITE column transforms (TransformModifier reads these next frame)',
+      '    setValue("transform" + col + "X", radiusX * Math.sin(input) * speed);',
+      '    setValue("transform" + col + "Z", radiusZ * Math.cos(input) * speed);',
+      '}'
+    ].join('\n')
+  },
+  blank_camZoom: { type:'blankMod', name:'camZoom', modName:'camZoom', defaultVal:0.7, color:'#9c27b0' },
+  blank_hudCamAngle: { type:'blankMod', name:'hudCamAngle', modName:'hudCamAngle', defaultVal:0, color:'#9c27b0' },
+  blank_haloRadiusX: { type:'blankMod', name:'haloRadiusX', modName:'haloRadiusX', defaultVal:0, color:'#9c27b0' },
+  blank_haloRadiusZ: { type:'blankMod', name:'haloRadiusZ', modName:'haloRadiusZ', defaultVal:0, color:'#9c27b0' },
+  blank_haloSpeed: { type:'blankMod', name:'haloSpeed', modName:'haloSpeed', defaultVal:0, color:'#9c27b0' },
+  blank_blackScreen: { type:'blankMod', name:'blackScreen', modName:'blackScreen', defaultVal:0, color:'#9c27b0' },
+  blank_tipsyX: { type:'blankMod', name:'tipsyX', modName:'tipsyX', defaultVal:0, color:'#9c27b0' },
+  blank_tipsyZ: { type:'blankMod', name:'tipsyZ', modName:'tipsyZ', defaultVal:0, color:'#9c27b0' },
+  blank_bumpyX: { type:'blankMod', name:'bumpyX', modName:'bumpyX', defaultVal:0, color:'#9c27b0' },
+  blank_bumpyPeriod: { type:'blankMod', name:'bumpyPeriod', modName:'bumpyPeriod', defaultVal:0, color:'#9c27b0' },
+  funcOnce: { type:'funcOnce', name:'Func Once', color:'#ff9800', code:'// one-shot callback\n' },
+  func: { type:'func', name:'Func Range', color:'#4fc3f7', duration:16, code:'// continuous while step in range\n' },
+  blankMod: { type:'blankMod', name:'custom blank', modName:'customMod', defaultVal:0, color:'#9c27b0' }
+};
+
+function applyEventPreset(ev, presetKey){
+  const p = EVENT_PRESETS[presetKey];
+  if(!p || !ev) return;
+  ev.type = p.type;
+  ev.name = p.name || ev.name;
+  if(p.color) ev.color = p.color;
+  if(p.type === 'blankMod'){
+    ev.modName = p.modName || 'camZoom';
+    ev.defaultVal = (p.defaultVal != null) ? p.defaultVal : 0;
+    ev.code = '';
+    ev.step = 0;
+    ev.endStep = 0;
+  } else {
+    ev.code = p.code || '';
+    if(p.type === 'func' && p.duration){
+      ev.endStep = (ev.step || 0) + p.duration;
+    }
+  }
+}
+const eventPalette = ['#ff9800','#ff5722','#e91e63','#9c27b0','#3f51b5','#00bcd4','#8bc34a','#cddc39'];
+
 
 
 let dom = {};
@@ -1119,11 +1453,23 @@ function newSequence(){
   t5.keyframes = [
   ];
   tracks.push(t1,t2,t3,t4,t5);
-  state.sequence = {version:'1.0.0', songName:'new-song', bpm:150, tracks, shaders:[], meta:{}};
+  state.sequence = {
+    version:'1.0.0', songName:'new-song', bpm:150, tracks, shaders:[], meta:{},
+    events: [],
+    runtime: {
+      enableProxies: false,
+      enableHelpers: true,
+      onUpdateCode: '',
+      postReceptorCode: '',
+      blankMods: [] // {name, defaultVal}
+    }
+  };
   state.songName = 'new-song';
   state.bpm = 150;
   state.selected = [];
   state.selectedTrack = tracks[0];
+  state.selectedEvent = null;
+  state.inspectorMode = 'track';
   state.songLengthSteps = 128;
 }
 
@@ -1137,7 +1483,10 @@ function startNewProject(){
   state.undo = [];
   state.redo = [];
   state.selected = [];
+  state.selectedEvent = null;
+  state.inspectorMode = 'track';
   state.kfId = 1;
+  state.evtId = 1;
   if(state.isPlaying) stopPlayback();
   if(state.audio){ try{ state.audio.pause(); }catch(e){} }
   if(state.audioSource){ try{ state.audioSource.disconnect(); }catch(e){} state.audioSource = null; }
@@ -1201,6 +1550,10 @@ function addKeyframeAt(step, value){
 }
 
 function deleteSelected(){
+  if(state.inspectorMode === 'event' && state.selectedEvent){
+    removeEvent(state.selectedEvent);
+    return;
+  }
   if(!state.selected.length) return;
   const removed = [];
   for(const k of [...state.selected]){
@@ -1261,10 +1614,13 @@ function removeTrack(){
 }
 
 function selectTrack(t){
-  if(state.selectedTrack === t) return;
+  if(state.selectedTrack === t && state.inspectorMode === 'track') return;
   state.selectedTrack = t;
+  state.selectedEvent = null;
+  state.inspectorMode = 'track';
   refreshHeaders();
   refreshInspector();
+  refreshEventMarkers();
 }
 
 function selectKeyframe(kf, additive){
@@ -1832,6 +2188,58 @@ function renderPreview(){
     const size = (p===0?96:84) * pulse;
     drawArrow(ctx, r.x, r.y, d, r.angle, r.scaleX, r.scaleY, r.alpha, size, r.glow != null ? r.glow : 0);
   }
+
+  // ---------- ProxyField ghosts (visual only – mirrors engine + bludlus) ----------
+  // Real setup starts alpha=0 / visible=false. Only after ProxyField Show should they appear.
+  // When "off": alpha must be 0 (fully hidden) — never a dim ghost.
+  try {
+    ensureRuntime();
+    const rt = state.sequence.runtime || {};
+    if (rt.enableProxies) {
+      const stepNow = state.songPos / stepCrochet();
+      // Show stays active from a Show event until a later Hide event
+      let proxyLive = false;
+      const timed = (state.sequence.events || []).slice().sort((a,b)=> (a.step||0)-(b.step||0));
+      for (const ev of timed) {
+        if (!ev || ev.visible === false) continue;
+        if (ev.type !== 'funcOnce') continue;
+        if ((ev.step || 0) > stepNow) break;
+        const code = (ev.code || '') + ' ' + (ev.name || '');
+        const isShow = /ProxyField Show|proxies\s*\[|\.visible\s*=\s*true/i.test(code);
+        const isHide = /ProxyField Hide|\.visible\s*=\s*false/i.test(code) && /prox/i.test(code);
+        if (isShow) proxyLive = true;
+        if (isHide) proxyLive = false;
+      }
+
+      if (proxyLive) {
+        // bludlus: dad @ 0,600,1200 ; bf @ -600,-1200,-1800
+        // alphas alternate 0.6 / 1.0 (never below that when on)
+        const dadOffsets = [0, 600, 1200];
+        const bfOffsets = [-600, -1200, -1800];
+        for (let i = 0; i < 3; i++) {
+          const aEven = 0.6;
+          const aOdd = 1.0;
+          const aDad = (i % 2 === 0) ? aEven : aOdd;
+          const aBf  = (i % 2 === 0) ? aOdd : aEven;
+          for (let d = 0; d < 4; d++) {
+            const r0 = computeReceptor(engine, 0, d, beat, timeSec);
+            drawArrow(ctx, r0.x + dadOffsets[i], r0.y, d, r0.angle, r0.scaleX, r0.scaleY,
+              Math.min(1, (r0.alpha != null ? r0.alpha : 1) * aDad), 96 * pulse * 0.88, 0);
+            const r1 = computeReceptor(engine, 1, d, beat, timeSec);
+            drawArrow(ctx, r1.x + bfOffsets[i], r1.y, d, r1.angle, r1.scaleX, r1.scaleY,
+              Math.min(1, (r1.alpha != null ? r1.alpha : 1) * aBf), 84 * pulse * 0.88, 0);
+          }
+        }
+        ctx.save();
+        ctx.globalAlpha = 0.7;
+        ctx.fillStyle = '#4fc3f7';
+        ctx.font = '11px monospace';
+        ctx.fillText('ProxyFields LIVE', 16, 28);
+        ctx.restore();
+      }
+      // when !proxyLive: alpha stays 0 — nothing drawn
+    }
+  } catch (e) { /* preview-only */ }
 }
 
 
@@ -3036,6 +3444,7 @@ function exportVanillaPsychLua(){
 }
 
 function exportJSON(){
+  ensureRuntime();
   const data = {
     version:'1.0.0', songName:state.songName, bpm:state.bpm,
     tracks: state.sequence.tracks.map(t=>({
@@ -3045,6 +3454,18 @@ function exportJSON(){
       continuousEnd:t.continuousEnd||0, continuousFunc:t.continuousFunc||'',
       visible:!!t.visible, locked:!!t.locked, color:t.color, meta:t.meta||{}
     })),
+    events: (state.sequence.events||[]).map(e=>({
+      id:e.id, type:e.type, name:e.name||'', step:e.step||0, endStep:e.endStep||0,
+      code:e.code||'', modName:e.modName||'', defaultVal:e.defaultVal||0,
+      color:e.color, visible:e.visible!==false
+    })),
+    runtime: {
+      enableProxies: !!state.sequence.runtime.enableProxies,
+      enableHelpers: state.sequence.runtime.enableHelpers !== false,
+      onUpdateCode: state.sequence.runtime.onUpdateCode||'',
+      postReceptorCode: state.sequence.runtime.postReceptorCode||'',
+      blankMods: state.sequence.runtime.blankMods||[]
+    },
     shaders:[], meta:{}
   };
   downloadFile('sequence.json', JSON.stringify(data, null, '\t'));
@@ -3083,9 +3504,31 @@ function importJSON(file){
       }));
       if(!tracks.length){ flashStatus('Import failed: no tracks'); return; }
       for(const t of tracks) sortKeyframes(t);
+      const events = (data.events||[]).map((e,i)=>({
+        id: e.id || ('evt_'+(i+1)),
+        type: ['func','funcOnce','blankMod'].includes(e.type) ? e.type : 'funcOnce',
+        name: e.name||'',
+        step: Number(e.step)||0,
+        endStep: Number(e.endStep)||0,
+        code: e.code||'',
+        modName: e.modName||'',
+        defaultVal: Number(e.defaultVal)||0,
+        color: e.color || eventPalette[i%eventPalette.length],
+        visible: e.visible!==false
+      }));
+      for(const e of events){ const n=parseInt(String(e.id).replace(/\D/g,''),10); if(n>=state.evtId) state.evtId=n+1; }
+      const rt = data.runtime || {};
       state.sequence = {
         version:'1.0.0', songName:data.songName||'imported',
-        bpm:Number(data.bpm)||150, tracks, shaders:data.shaders||[], meta:data.meta||{}
+        bpm:Number(data.bpm)||150, tracks, shaders:data.shaders||[], meta:data.meta||{},
+        events,
+        runtime: {
+          enableProxies: !!rt.enableProxies,
+          enableHelpers: rt.enableHelpers !== false,
+          onUpdateCode: rt.onUpdateCode||'',
+          postReceptorCode: rt.postReceptorCode||'',
+          blankMods: Array.isArray(rt.blankMods) ? rt.blankMods : []
+        }
       };
       state.songName = state.sequence.songName;
       state.bpm = state.sequence.bpm;
@@ -3276,17 +3719,73 @@ function normalizeModName(name){
   return name;
 }
 
+function extractFunctionBody(src, funcName){
+  // Best-effort extraction of a top-level function body (handles simple braces)
+  const re = new RegExp('function\\s+' + funcName + '\\s*\\([^)]*\\)\\s*\\{', 'i');
+  const m = re.exec(src);
+  if(!m) return '';
+  let i = m.index + m[0].length;
+  let depth = 1;
+  const bodyStart = i;
+  while(i < src.length && depth > 0){
+    const ch = src[i++];
+    if(ch === '{') depth++;
+    else if(ch === '}') depth--;
+  }
+  if(depth !== 0) return '';
+  return src.slice(bodyStart, i-1).trim();
+}
+
+function extractCallbackBodies(src){
+  // Extract qFunc / qFuncOnce / queueFunc / queueFuncOnce / modManager.queueFunc* calls
+  // with their callback bodies. Returns array of {type, step, endStep, code, name}
+  const results = [];
+  const patterns = [
+    // qFuncOnce(step, function(...){ ... })
+    { reSrc: '(?:qFuncOnce|queueFuncOnce|modManager\\.queueFuncOnce)\\s*\\(\\s*([^,]+)\\s*,\\s*function\\s*\\([^)]*\\)\\s*\\{', type:'funcOnce' },
+    // qFunc(start, end, function(...){ ... })
+    { reSrc: '(?:qFunc|queueFunc|modManager\\.queueFunc)\\s*\\(\\s*([^,]+)\\s*,\\s*([^,]+)\\s*,\\s*function\\s*\\([^)]*\\)\\s*\\{', type:'func' }
+  ];
+  for(const pat of patterns){
+    let m;
+    const re = new RegExp(pat.reSrc, 'g');
+    while((m = re.exec(src)) !== null){
+      let i = m.index + m[0].length;
+      let depth = 1;
+      const bodyStart = i;
+      while(i < src.length && depth > 0){
+        const ch = src[i++];
+        if(ch === '{') depth++;
+        else if(ch === '}') depth--;
+      }
+      if(depth !== 0) continue;
+      const body = src.slice(bodyStart, i-1).trim();
+      // skip empty / pure-comment bodies that are just scaffolding
+      if(!body || body.replace(/\/\/[^\n]*/g,'').trim().length < 3) continue;
+      const step = parseNumberish(m[1]);
+      const endStep = pat.type === 'func' ? parseNumberish(m[2]) : step;
+      if(!isFinite(step)) continue;
+      results.push({
+        type: pat.type,
+        step,
+        endStep: isFinite(endStep) ? endStep : step,
+        code: body,
+        name: pat.type === 'func' ? ('func @ '+step) : ('once @ '+step)
+      });
+    }
+  }
+  return results;
+}
+
 function parseModchartScript(text){
-  text = text.replace(/\/\*[\s\S]*?\*\//g, '\n');
-  text = text.replace(/--[^\n]*/g, '\n');
-  text = text.replace(/\/\/[^\n]*/g, '\n');
+  // Keep a copy with comments for function-body extraction, then a cleaned version for queue parsing
+  const raw = text;
+  let cleaned = text.replace(/\/\*[\s\S]*?\*\//g, '\n');
+  cleaned = cleaned.replace(/--[^\n]*/g, '\n');
+  cleaned = cleaned.replace(/\/\/[^\n]*/g, '\n');
 
   const events = [];
   let ignoredComplex = 0;
-
-  const complexRe = /numericForInterval|forNoteInMap|queueContFunc|queueFuncOnce|modManager\.queueFunc|modManager\.queueFuncOnce|queueFunc\s*\(/g;
-  let cm;
-  while((cm = complexRe.exec(text)) !== null) ignoredComplex++;
 
   function addSet(stepStr, mod, valStr, playerArg){
     const step = parseNumberish(stepStr);
@@ -3326,37 +3825,73 @@ function parseModchartScript(text){
   // Accept queueSet / qSet / modManager.queueSet (and the *P variants)
   const reQueueSet = /(?:queueSetP?|qSet)\s*\(\s*([^,]+)\s*,\s*["']([^"']+)["']\s*,\s*([^,\)]+)(?:\s*,\s*([^\)\]]+))?\s*\)/g;
   let m;
-  while((m = reQueueSet.exec(text)) !== null){
+  while((m = reQueueSet.exec(cleaned)) !== null){
     addSet(m[1], m[2], m[3], m[4]);
   }
 
   // Accept queueEase / qEase / modManager.queueEase (and the *P variants)
   const reQueueEase = /(?:queueEaseP?|qEase)\s*\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*["']([^"']+)["']\s*,\s*([^,]+)\s*,\s*["']([^"']+)["'](?:\s*,\s*([^\)\]]+))?\s*\)/g;
-  while((m = reQueueEase.exec(text)) !== null){
+  while((m = reQueueEase.exec(cleaned)) !== null){
     addEase(m[1], m[2], m[3], m[4], m[5], m[6]);
   }
 
   const reSetValue = /(?:^|[^\w.])setValue\s*\(\s*["']([^"']+)["']\s*,\s*([^,\)]+)(?:\s*,\s*([^\)\]]+))?\s*\)/g;
-  while((m = reSetValue.exec(text)) !== null){
+  while((m = reSetValue.exec(cleaned)) !== null){
     addSet('0', m[1], m[2], m[3]);
   }
 
   const reMMSet = /modManager\.queueSetP?\s*\(\s*([^,]+)\s*,\s*["']([^"']+)["']\s*,\s*([^,\)]+)(?:\s*,\s*([^\)\]]+))?\s*\)/g;
-  while((m = reMMSet.exec(text)) !== null){
+  while((m = reMMSet.exec(cleaned)) !== null){
     addSet(m[1], m[2], m[3], m[4]);
   }
 
   const reMMEase = /modManager\.queueEaseP?\s*\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*["']([^"']+)["']\s*,\s*([^,]+)\s*,\s*["']([^"']+)["'](?:\s*,\s*([^\)\]]+))?\s*\)/g;
-  while((m = reMMEase.exec(text)) !== null){
+  while((m = reMMEase.exec(cleaned)) !== null){
     addEase(m[1], m[2], m[3], m[4], m[5], m[6]);
   }
 
   const reMMSetVal = /modManager\.(?:setValue|setCurrentValue)\s*\(\s*["']([^"']+)["']\s*,\s*([^,\)]+)(?:\s*,\s*([^\)\]]+))?\s*\)/g;
-  while((m = reMMSetVal.exec(text)) !== null){
+  while((m = reMMSetVal.exec(cleaned)) !== null){
     addSet('0', m[1], m[2], m[3]);
   }
 
-  return { events, ignoredComplex };
+  // ---- Runtime extraction (from original text so comments/structure survive) ----
+  const hasProxies = /ProxyField|proxies\s*:|dropProxies\s*:|postReceptorGeneration/.test(raw);
+  const hasHelpers = /numericForInterval|mathRad|addBlankMod/.test(raw);
+
+  const blankMods = [];
+  const reBlank = /(?:addBlankMod|registerBlankMod)\s*\(\s*["']([^"']+)["']\s*(?:,\s*([^)\]]+))?\s*\)/g;
+  while((m = reBlank.exec(raw)) !== null){
+    const name = m[1].trim();
+    const def = parseNumberish(m[2]);
+    if(name) blankMods.push({name, defaultVal: isFinite(def) ? def : 0});
+  }
+
+  let onUpdateCode = extractFunctionBody(raw, 'onUpdate');
+  // Strip the common null-guard if present so the editor shows the useful body
+  if(onUpdateCode){
+    onUpdateCode = onUpdateCode.replace(/^\s*if\s*\(\s*modMgr\s*==\s*null\s*\)\s*return\s*;?\s*/i, '').trim();
+  }
+
+  // Extra postReceptor code beyond the default skeleton is hard to isolate;
+  // we just flag proxies and let the user edit postReceptorCode if needed.
+  const timedCallbacks = extractCallbackBodies(raw);
+  // Count leftover complex constructs that we still don't model (array scaffolding etc.)
+  const leftoverRe = /for\s*\(\s*i\s+in\s+\d+\.\.\.|var\s+DROP\s*=|var\s+kicks\d*\s*=/g;
+  while(leftoverRe.exec(raw) !== null) ignoredComplex++;
+
+  return {
+    events,
+    ignoredComplex,
+    runtime: {
+      enableProxies: hasProxies,
+      enableHelpers: hasHelpers || true,
+      onUpdateCode: onUpdateCode || '',
+      postReceptorCode: '',
+      blankMods
+    },
+    timedCallbacks
+  };
 }
 
 function importScript(file){
@@ -3364,9 +3899,10 @@ function importScript(file){
   reader.onload = ()=>{
     try{
       const text = reader.result;
-      const { events, ignoredComplex } = parseModchartScript(text);
-      if(!events.length){
-        flashStatus('No queueSet/qSet/queueEase found (use the expanded flat version for complex charts)');
+      const parsed = parseModchartScript(text);
+      const { events, ignoredComplex, runtime, timedCallbacks } = parsed;
+      if(!events.length && !(timedCallbacks && timedCallbacks.length)){
+        flashStatus('No queueSet/qSet/queueEase or qFunc found (use the expanded flat version for complex charts)');
         return;
       }
 
@@ -3405,23 +3941,60 @@ function importScript(file){
       const tracks = Array.from(trackMap.values());
       for(const t of tracks) sortKeyframes(t);
 
+      // Convert extracted qFunc / qFuncOnce into project Events
+      const projectEvents = [];
+      for(const cb of (timedCallbacks || [])){
+        const id = 'evt_' + (state.evtId++);
+        projectEvents.push({
+          id,
+          type: cb.type,
+          name: cb.name || (cb.type + ' @ ' + cb.step),
+          step: cb.step,
+          endStep: cb.endStep,
+          code: cb.code,
+          modName: '',
+          defaultVal: 0,
+          color: cb.type === 'func' ? '#4fc3f7' : '#ff9800',
+          visible: true
+        });
+      }
+
       const baseName = (file.name || 'imported').replace(/\.(lua|hscript|hx|haxe|txt)$/i, '');
       state.sequence = {
         version: '1.0.0',
         songName: baseName,
         bpm: state.bpm || 150,
         tracks,
+        events: projectEvents,
+        runtime: {
+          enableProxies: !!(runtime && runtime.enableProxies),
+          enableHelpers: runtime ? (runtime.enableHelpers !== false) : true,
+          onUpdateCode: (runtime && runtime.onUpdateCode) || '',
+          postReceptorCode: (runtime && runtime.postReceptorCode) || '',
+          blankMods: (runtime && runtime.blankMods) ? runtime.blankMods.slice() : []
+        },
         shaders: [],
-        meta: { importedFrom: file.name, ignoredComplex }
+        meta: {
+          importedFrom: file.name,
+          ignoredComplex,
+          extractedCallbacks: (timedCallbacks || []).length,
+          extractedBlankMods: (runtime && runtime.blankMods) ? runtime.blankMods.length : 0
+        }
       };
       state.songName = baseName;
       state.selected = [];
+      state.selectedEvent = null;
+      state.inspectorMode = 'track';
       state.selectedTrack = tracks[0] || null;
       recalcSongLength();
       afterChange();
 
-      let msg = 'Imported ' + events.length + ' events → ' + tracks.length + ' tracks';
-      if(ignoredComplex > 0) msg += ' (skipped ' + ignoredComplex + ' complex blocks)';
+      let msg = 'Imported ' + events.length + ' keyframes → ' + tracks.length + ' tracks';
+      if(projectEvents.length) msg += ', ' + projectEvents.length + ' runtime events';
+      if(runtime && runtime.blankMods && runtime.blankMods.length)
+        msg += ', ' + runtime.blankMods.length + ' blank mods';
+      if(runtime && runtime.enableProxies) msg += ', proxies ON';
+      if(ignoredComplex > 0) msg += ' (left ' + ignoredComplex + ' array scaffolds)';
       flashStatus(msg);
     }catch(e){
       console.error(e);
@@ -3433,26 +4006,145 @@ function importScript(file){
 
 function exportTrollEngineHScript() {
   const tracks = state.sequence.tracks || [];
+  const events = state.sequence.events || [];
   const songName = state.songName || 'new-song';
   const bpm = state.bpm || 150;
+  ensureRuntime();
+  const rt = state.sequence.runtime || {};
+  const blankMap = collectBlankModsFromProject();
 
   let hscript = '';
   hscript += `// Sequence Editor Export (HScript)\n`;
   hscript += `// Song: ${songName} | BPM: ${bpm}\n`;
-  hscript += `// Generated by faithful Modchart Editor\n\n`;
+  hscript += `// Generated by faithful Modchart Editor\n`;
+  hscript += `// Includes runtime shell (blank mods / proxies / onUpdate / events) when enabled\n\n`;
 
-  // Same rule as Lua export: only blank camera/utility + safe extras.
-  // Never blank core note-effect modifiers or they become no-ops.
+  // Top-level vars (bludlus-style)
+  if(rt.enableProxies){
+    hscript += `var proxies:Array<ProxyField> = [];\n`;
+  }
+  hscript += `var modMgr = null;\n`;
+  hscript += `var qEase = null;\n`;
+  hscript += `var qSet = null;\n`;
+  hscript += `var setValue = null;\n`;
+  hscript += `var qFunc = null;\n`;
+  hscript += `var qFuncOnce = null;\n`;
+  hscript += `var dw = 1; // downscroll direction\n\n`;
+
+  if(rt.enableHelpers !== false){
+    hscript += `function numericForInterval(start:Float, end:Float, interval:Float, func:Float->Void) {\n`;
+    hscript += `    var index = start;\n`;
+    hscript += `    while (index < end) {\n`;
+    hscript += `        func(index);\n`;
+    hscript += `        index += interval;\n`;
+    hscript += `    }\n`;
+    hscript += `}\n\n`;
+    hscript += `function mathRad(degrees:Float):Float {\n`;
+    hscript += `    return degrees * Math.PI / 180;\n`;
+    hscript += `}\n\n`;
+    hscript += `function addBlankMod(name:String, defaultVal:Float = 0) {\n`;
+    hscript += `    modMgr.registerBlankMod(name, defaultVal);\n`;
+    hscript += `}\n\n`;
+  }
+
+  // postReceptorGeneration – matches funkin.objects.proxies.ProxyField (FieldBase that copies NoteField.drawQueue)
+  if(rt.enableProxies){
+    hscript += `function postReceptorGeneration() {\n`;
+    hscript += `    // ProxyField(proxiedField:NoteField) – source/funkin/objects/proxies/ProxyField.hx\n`;
+    hscript += `    var daFields = game.dadField.noteField;\n`;
+    hscript += `    var boFields = game.playerField.noteField;\n`;
+    hscript += `    var xDad = 0.0;\n`;
+    hscript += `    var xBf = -600.0;\n`;
+    hscript += `    for (i in 0...3) {\n`;
+    hscript += `        var proxDad = new ProxyField(daFields);\n`;
+    hscript += `        proxDad.cameras = [game.camGame];\n`;
+    hscript += `        proxDad.x = xDad;\n`;
+    hscript += `        proxDad.scrollFactor.set(0, 0);\n`;
+    hscript += `        proxDad.alpha = 0;\n`;
+    hscript += `        proxDad.visible = false;\n`;
+    hscript += `        var proxBf = new ProxyField(boFields);\n`;
+    hscript += `        proxBf.cameras = [game.camHUD];\n`;
+    hscript += `        proxBf.x = xBf;\n`;
+    hscript += `        proxBf.scrollFactor.set(0, 0);\n`;
+    hscript += `        proxBf.alpha = 0;\n`;
+    hscript += `        proxBf.visible = false;\n`;
+    hscript += `        xDad += 600;\n`;
+    hscript += `        xBf -= 600;\n`;
+    hscript += `        if (game.notefields != null) {\n`;
+    hscript += `            game.notefields.add(proxDad);\n`;
+    hscript += `            game.notefields.add(proxBf);\n`;
+    hscript += `        }\n`;
+    hscript += `        proxies.push(proxDad);\n`;
+    hscript += `        proxies.push(proxBf);\n`;
+    hscript += `    }\n`;
+    if(rt.postReceptorCode && String(rt.postReceptorCode).trim()){
+      hscript += `    // custom postReceptor body\n`;
+      for(const line of String(rt.postReceptorCode).split('\n')){
+        hscript += `    ${line}\n`;
+      }
+    }
+    hscript += `}\n\n`;
+  } else if(rt.postReceptorCode && String(rt.postReceptorCode).trim()){
+    hscript += `function postReceptorGeneration() {\n`;
+    for(const line of String(rt.postReceptorCode).split('\n')){
+      hscript += `    ${line}\n`;
+    }
+    hscript += `}\n\n`;
+  }
+
+  // postModifierRegister
   hscript += `function postModifierRegister() {\n`;
-  const alwaysBlank = [
-  ];
-  for(const m of alwaysBlank){
-    const def = (m === 'hudCamZoom' || m === 'hudCamZoomMod' || m === 'gameCamZoom' || m === 'gameCamZoomMod') ? 1 : 0;
-    hscript += `    modManager.addBlankMod("${m}", ${def});\n`;
+  hscript += `    modMgr = game.modManager;\n`;
+  hscript += `    qEase = modMgr.queueEase;\n`;
+  hscript += `    qSet = modMgr.queueSet;\n`;
+  hscript += `    setValue = modMgr.setValue;\n`;
+  hscript += `    qFunc = modMgr.queueFunc;\n`;
+  hscript += `    qFuncOnce = modMgr.queueFuncOnce;\n`;
+  hscript += `    dw = ClientPrefs.downScroll ? 1 : -1;\n\n`;
+  if(blankMap.size){
+    hscript += `    // blank / aux mods\n`;
+    for(const [name, def] of blankMap){
+      hscript += `    addBlankMod("${name}", ${formatNum(def)});\n`;
+    }
+    hscript += `\n`;
   }
   hscript += `}\n\n`;
 
+  // onUpdate
+  if(rt.onUpdateCode && String(rt.onUpdateCode).trim()){
+    hscript += `function onUpdate(elapsed:Float) {\n`;
+    hscript += `    if (modMgr == null) return;\n`;
+    for(const line of String(rt.onUpdateCode).split('\n')){
+      hscript += `    ${line}\n`;
+    }
+    hscript += `}\n\n`;
+  } else if(blankMap.has('camZoom') || blankMap.has('hudCamAngle')){
+    // default camera binding when those blank mods exist (bludlus-style)
+    hscript += `function onUpdate(elapsed:Float) {\n`;
+    hscript += `    if (modMgr == null) return;\n`;
+    if(blankMap.has('camZoom')){
+      hscript += `    var camZoom = modMgr.getValue("camZoom", 0);\n`;
+      hscript += `    if (camZoom == 0) camZoom = 0.7;\n`;
+      hscript += `    game.camGame.zoom = camZoom;\n`;
+      hscript += `    game.defaultCamZoom = camZoom;\n`;
+    }
+    if(blankMap.has('hudCamAngle')){
+      hscript += `    game.camHUD.angle = modMgr.getValue("hudCamAngle", 0);\n`;
+    }
+    hscript += `}\n\n`;
+  }
+
+  // generateModchart
   hscript += `function generateModchart() {\n`;
+  hscript += `    if (modMgr == null) {\n`;
+  hscript += `        modMgr = game.modManager;\n`;
+  hscript += `        qEase = modMgr.queueEase;\n`;
+  hscript += `        qSet = modMgr.queueSet;\n`;
+  hscript += `        setValue = modMgr.setValue;\n`;
+  hscript += `        qFunc = modMgr.queueFunc;\n`;
+  hscript += `        qFuncOnce = modMgr.queueFuncOnce;\n`;
+  hscript += `        dw = ClientPrefs.downScroll ? 1 : -1;\n`;
+  hscript += `    }\n\n`;
 
   for(const t of tracks){
     if(!t.keyframes || !t.keyframes.length) continue;
@@ -3463,22 +4155,41 @@ function exportTrollEngineHScript() {
     if(t.target === 'player') playerArg = ', 0';
     else if(t.target === 'opponent') playerArg = ', 1';
 
-    hscript += `  // Track: ${t.name || mod} [${t.target || 'both'}]\n`;
+    hscript += `    // Track: ${t.name || mod} [${t.target || 'both'}]\n`;
 
     const kfs = t.keyframes.slice().sort((a,b) => a.step - b.step);
     for(const k of kfs){
       const mode = k.mode || 'both';
-      const api = k.api || 'normal';
-      // HScript side usually uses the same queueSet/queueEase; P-style is mainly a Lua convention
       if(mode === 'set' || mode === 'both'){
-        hscript += `  modManager.queueSet(${formatNum(k.step)}, "${mod}", ${formatNum(k.value)}${playerArg});\n`;
+        hscript += `    qSet(${formatNum(k.step)}, "${mod}", ${formatNum(k.value)}${playerArg});\n`;
       }
       if((mode === 'ease' || mode === 'both') && (k.duration||0) > 0){
         const endVal = (mode === 'both') ? 0 : k.value;
-        hscript += `  modManager.queueEase(${formatNum(k.step)}, ${formatNum(k.step + k.duration)}, "${mod}", ${formatNum(endVal)}, "${k.ease || 'quadOut'}"${playerArg});\n`;
+        hscript += `    qEase(${formatNum(k.step)}, ${formatNum(k.step + k.duration)}, "${mod}", ${formatNum(endVal)}, "${k.ease || 'quadOut'}"${playerArg});\n`;
       }
     }
     hscript += `\n`;
+  }
+
+  // Timed events
+  const timed = events.filter(e => e.type === 'func' || e.type === 'funcOnce').slice().sort((a,b)=> (a.step||0)-(b.step||0));
+  if(timed.length){
+    hscript += `    // ---- timed events (queueFunc / queueFuncOnce) ----\n`;
+    for(const ev of timed){
+      const label = (ev.name || eventTypeLabels[ev.type] || ev.type).replace(/\*\//g,'');
+      hscript += `    // Event: ${label}\n`;
+      const body = (ev.code || '').trim() || '// (empty)';
+      const indented = body.split('\n').map(l => '        ' + l).join('\n');
+      if(ev.type === 'funcOnce'){
+        hscript += `    qFuncOnce(${formatNum(ev.step)}, function(event, step) {\n`;
+        hscript += indented + `\n`;
+        hscript += `    });\n\n`;
+      } else {
+        hscript += `    qFunc(${formatNum(ev.step)}, ${formatNum(ev.endStep || (ev.step+16))}, function(event, step) {\n`;
+        hscript += indented + `\n`;
+        hscript += `    });\n\n`;
+      }
+    }
   }
 
   hscript += `}\n`;
@@ -3489,10 +4200,309 @@ function recalcSongLength(){
   let maxStep = 256;
   for(const t of state.sequence.tracks)
     for(const k of t.keyframes) maxStep = Math.max(maxStep, k.step+(k.duration||0));
+  for(const ev of (state.sequence.events||[])){
+    maxStep = Math.max(maxStep, ev.step||0, ev.endStep||0);
+  }
   if(state.audio && isFinite(state.audio.duration))
     maxStep = Math.max(maxStep, Math.ceil(state.audio.duration*(state.bpm/60)*4));
   state.songLengthSteps = Math.ceil(maxStep/4)*4 + 16;
 }
+
+
+/* ---------- Events (timed runtime callbacks + blank mods) ---------- */
+function ensureRuntime(){
+  if(!state.sequence.runtime){
+    state.sequence.runtime = {
+      enableProxies: false,
+      enableHelpers: true,
+      onUpdateCode: '',
+      postReceptorCode: '',
+      blankMods: []
+    };
+  }
+  if(!Array.isArray(state.sequence.events)) state.sequence.events = [];
+  return state.sequence.runtime;
+}
+
+/* Bludlus-style runtime defaults (from bludlus_v0.3.0.hscript) */
+const BLUDLUS_BLANK_MODS = [
+  {name:'camZoom', defaultVal:0.7},
+  {name:'hudCamAngle', defaultVal:0},
+  {name:'haloRadiusX', defaultVal:0},
+  {name:'haloRadiusZ', defaultVal:0},
+  {name:'haloSpeed', defaultVal:0},
+  {name:'blackScreen', defaultVal:0},
+  {name:'tipsyX', defaultVal:0},
+  {name:'tipsyZ', defaultVal:0},
+  {name:'tipsyZ0', defaultVal:0},
+  {name:'tipsyZ1', defaultVal:0},
+  {name:'tipsyZ2', defaultVal:0},
+  {name:'tipsyZ3', defaultVal:0},
+  {name:'bumpyX', defaultVal:0},
+  {name:'bumpyXPeriod', defaultVal:0},
+  {name:'bumpyPeriod', defaultVal:0}
+];
+
+const BLUDLUS_ONUPDATE = [
+  'if (modMgr == null) return;',
+  '',
+  'var camZoom = modMgr.getValue("camZoom", 0);',
+  'if (camZoom == 0) camZoom = 0.7; // safety',
+  '',
+  'game.camGame.zoom = camZoom;',
+  'game.defaultCamZoom = camZoom;',
+  'game.camHUD.angle = modMgr.getValue("hudCamAngle", 0);'
+].join('\n');
+
+const BLUDLUS_HALO_FUNC = [
+  'var beat = step / 4;',
+  'for (col in 0...4) {',
+  '    var speed = modMgr.getValue("haloSpeed", 0);',
+  '    var input = (col + 1 + beat) * mathRad(360 / 4);',
+  '    var radiusX = modMgr.getValue("haloRadiusX", 0);',
+  '    var radiusZ = modMgr.getValue("haloRadiusZ", 0);',
+  '    setValue("transform" + col + "X", radiusX * Math.sin(input) * speed);',
+  '    setValue("transform" + col + "Z", radiusZ * Math.cos(input) * speed);',
+  '}'
+].join('\n');
+
+const BLUDLUS_PROXY_SHOW = [
+  'game.dadField.noteField.alpha = 0;',
+  'for (i in 0...proxies.length) {',
+  '    proxies[i].visible = true;',
+  '    proxies[i].alpha = (i % 2 == 0) ? 0.6 : 1.0;',
+  '}'
+].join('\n');
+
+const BLUDLUS_PROXY_HIDE = [
+  'game.dadField.noteField.alpha = 1;',
+  'for (i in 0...proxies.length) {',
+  '    proxies[i].alpha = 0;',
+  '    proxies[i].visible = false;',
+  '}'
+].join('\n');
+
+function refreshBlankModsList(){
+  ensureRuntime();
+  const el = document.getElementById('blank-mods-list');
+  if(!el) return;
+  const map = collectBlankModsFromProject();
+  const entries = Array.from(map.entries());
+  if(!entries.length){
+    el.textContent = '(none — use Bludlus preset or Blank Mod events)';
+    return;
+  }
+  el.innerHTML = entries.map(([n,v]) =>
+    '<div><code style="color:var(--accent)">'+n+'</code> = '+v+'</div>'
+  ).join('');
+}
+
+function enableProxiesShell(){
+  ensureRuntime();
+  const rt = state.sequence.runtime;
+  rt.enableProxies = true;
+  rt.enableHelpers = true;
+  // Do NOT inject onUpdate/postReceptor bodies or timeline events —
+  // those are added as Events from the preset dropdown at the playhead.
+  if(dom.chkEnableProxies) dom.chkEnableProxies.checked = true;
+  if(dom.chkEnableHelpers) dom.chkEnableHelpers.checked = true;
+  refreshBlankModsList();
+  afterChange();
+  flashStatus('ProxyFields export shell ON — add ProxyField Show/Hide events from the Events preset list');
+}
+
+function clearRuntimeFields(){
+  ensureRuntime();
+  const rt = state.sequence.runtime;
+  rt.enableProxies = false;
+  rt.enableHelpers = true;
+  rt.blankMods = [];
+  rt.onUpdateCode = '';
+  rt.postReceptorCode = '';
+  if(dom.chkEnableProxies) dom.chkEnableProxies.checked = false;
+  if(dom.chkEnableHelpers) dom.chkEnableHelpers.checked = true;
+  if(dom.inpOnUpdate) dom.inpOnUpdate.value = '';
+  if(dom.inpPostReceptor) dom.inpPostReceptor.value = '';
+  refreshBlankModsList();
+  afterChange();
+  flashStatus('Runtime fields cleared');
+}
+
+function makeEvent(type){
+  const id = 'evt_' + (state.evtId++);
+  const step = snapToQuant(state.songPos / stepCrochet());
+  const color = eventPalette[(state.sequence.events||[]).length % eventPalette.length];
+  const base = {
+    id, type: type || 'funcOnce', name: '',
+    step, endStep: step + 16,
+    code: '', modName: 'camZoom', defaultVal: 0,
+    color, visible: true
+  };
+  if(type === 'blankMod'){
+    base.name = 'blank ' + base.modName;
+    base.step = 0;
+  } else if(type === 'func'){
+    base.name = 'func @ ' + base.step;
+    base.code = '// continuous callback while step is in range\n// setValue("transform0X", Math.sin(step/4) * 40);';
+  } else {
+    base.name = 'once @ ' + base.step;
+    base.code = '// one-shot callback\n// e.g. proxies setup or one-time set';
+  }
+  return base;
+}
+
+function addEvent(type, presetKey){
+  ensureRuntime();
+  const ev = makeEvent(type || 'funcOnce');
+  if(presetKey && EVENT_PRESETS[presetKey]){
+    applyEventPreset(ev, presetKey);
+    if(presetKey === 'proxyShow' || presetKey === 'proxyHide'){
+      state.sequence.runtime.enableProxies = true;
+      state.sequence.runtime.enableHelpers = true;
+      if(dom.chkEnableProxies) dom.chkEnableProxies.checked = true;
+    }
+  }
+  const events = state.sequence.events;
+  pushUndo(
+    ()=>{ state.sequence.events = events.filter(e=>e!==ev); if(state.selectedEvent===ev){ state.selectedEvent=null; state.inspectorMode='track'; } },
+    ()=>{ state.sequence.events.push(ev); state.selectedEvent=ev; state.inspectorMode='event'; }
+  );
+  events.push(ev);
+  state.selectedEvent = ev;
+  state.inspectorMode = 'event';
+  state.selected = [];
+  afterChange();
+  // Sync preset dropdown
+  const sel = document.getElementById('sel-evt-preset');
+  if(sel) sel.value = presetKey || '';
+  flashStatus('Added event: ' + (ev.name || eventTypeLabels[ev.type] || ev.type));
+}
+
+function removeEvent(ev){
+  if(!ev) return;
+  const events = state.sequence.events || [];
+  const idx = events.indexOf(ev);
+  if(idx < 0) return;
+  pushUndo(
+    ()=>{ state.sequence.events.splice(Math.min(idx, state.sequence.events.length), 0, ev); state.selectedEvent=ev; state.inspectorMode='event'; },
+    ()=>{ state.sequence.events = state.sequence.events.filter(e=>e!==ev); if(state.selectedEvent===ev){ state.selectedEvent=null; state.inspectorMode='track'; } }
+  );
+  state.sequence.events = events.filter(e=>e!==ev);
+  if(state.selectedEvent === ev){
+    state.selectedEvent = null;
+    state.inspectorMode = 'track';
+  }
+  afterChange();
+  flashStatus('Event removed');
+}
+
+function selectEvent(ev){
+  if(!ev) return;
+  state.selectedEvent = ev;
+  state.inspectorMode = 'event';
+  state.selected = [];
+  refreshInspector();
+  refreshEventList();
+  refreshEventMarkers();
+}
+
+function closeEventPanel(){
+  state.selectedEvent = null;
+  state.inspectorMode = 'track';
+  refreshInspector();
+  refreshEventList();
+  refreshEventMarkers();
+}
+
+function applyEventField(field, value){
+  const ev = state.selectedEvent;
+  if(!ev) return;
+  const old = ev[field];
+  pushUndo(()=>{ ev[field]=old; }, ()=>{ ev[field]=value; });
+  ev[field] = value;
+  if(field === 'type' || field === 'name' || field === 'step' || field === 'color' || field === 'visible'){
+    refreshEventList();
+    refreshEventMarkers();
+  }
+  if(field === 'type') refreshInspector();
+}
+
+function refreshEventList(){
+  const list = dom.evtList;
+  if(!list) return;
+  const events = (state.sequence && state.sequence.events) || [];
+  if(dom.evtCount) dom.evtCount.textContent = events.length ? events.length + '' : 'none';
+  list.innerHTML = '';
+  const sorted = events.slice().sort((a,b)=> (a.step||0)-(b.step||0));
+  for(const ev of sorted){
+    const row = document.createElement('div');
+    row.className = 'evt-row' + (ev===state.selectedEvent ? ' selected' : '');
+    row.innerHTML = '<span class="evt-dot" style="background:'+(ev.color||'#ff9800')+'"></span>' +
+      '<span style="flex:1;overflow:hidden;text-overflow:ellipsis">' +
+      escapeHtml(ev.name || eventTypeLabels[ev.type] || ev.type) +
+      '</span><span style="color:var(--muted)">' + (Math.round((ev.step||0)*100)/100) + '</span>';
+    row.addEventListener('click', ()=> selectEvent(ev));
+    list.appendChild(row);
+  }
+}
+
+function refreshEventMarkers(){
+  // markers live on kf-layer as special elements
+  if(!dom.kfLayer) return;
+  // remove old
+  for(const [id, el] of state.evtEls){
+    if(el && el.parentNode) el.parentNode.removeChild(el);
+  }
+  state.evtEls.clear();
+  const events = (state.sequence && state.sequence.events) || [];
+  const pps = pxPerStep();
+  for(const ev of events){
+    if(ev.visible === false) continue;
+    if(ev.type === 'blankMod') continue; // not timed on timeline
+    const el = document.createElement('div');
+    el.className = 'event-marker' + (ev===state.selectedEvent ? ' selected' : '');
+    el.style.left = ((ev.step||0) * pps) + 'px';
+    el.style.background = ev.color || '#ff9800';
+    el.title = (eventTypeLabels[ev.type]||ev.type) + ' @ ' + ev.step + (ev.name ? ' — '+ev.name : '');
+    if(ev.type === 'func' && (ev.endStep||0) > (ev.step||0)){
+      el.style.width = Math.max(8, ((ev.endStep - ev.step) * pps)) + 'px';
+      el.style.opacity = '0.55';
+    }
+    el.addEventListener('mousedown', e=>{
+      e.stopPropagation(); e.preventDefault();
+      selectEvent(ev);
+    });
+    dom.kfLayer.appendChild(el);
+    state.evtEls.set(ev.id, el);
+  }
+}
+
+function collectBlankModsFromProject(){
+  ensureRuntime();
+  const map = new Map();
+  // from explicit runtime.blankMods and blankMod events
+  for(const b of (state.sequence.runtime.blankMods||[])){
+    if(b && b.name) map.set(b.name, Number(b.defaultVal)||0);
+  }
+  for(const ev of (state.sequence.events||[])){
+    if(ev.type === 'blankMod' && ev.modName){
+      map.set(ev.modName, Number(ev.defaultVal)||0);
+    }
+  }
+  // auto-detect common custom mods used by tracks that are not in core list
+  const core = new Set(modifierList.map(m=>m.toLowerCase()));
+  // known safe blank candidates often used in charts like bludlus
+  const autoCandidates = ['camZoom','hudCamAngle','haloRadiusX','haloRadiusZ','haloSpeed','blackScreen','tipsyX','tipsyZ','tipsyZ0','tipsyZ1','tipsyZ2','tipsyZ3','bumpyX','bumpyXPeriod','bumpyPeriod','gameCamZoom','hudCamZoom'];
+  for(const t of (state.sequence.tracks||[])){
+    const m = t.modifier;
+    if(autoCandidates.includes(m) && !map.has(m)) map.set(m, m.toLowerCase().includes('zoom') ? 1 : 0);
+  }
+  for(const name of autoCandidates){
+    // if any keyframe/event code mentions it, include
+  }
+  return map;
+}
+
 
 /* ---------- inspector ---------- */
 function fillSelect(sel, items, value){
@@ -3507,10 +4517,52 @@ function fillSelect(sel, items, value){
 function refreshInspector(){
   if(document.activeElement !== dom.inpSong) dom.inpSong.value = state.songName;
   if(document.activeElement !== dom.inpBpm) dom.inpBpm.value = state.bpm;
+
+  // Mode switch: classic track panels vs event panel
+  const eventMode = state.inspectorMode === 'event' && state.selectedEvent;
+  if(dom.classicPanels) dom.classicPanels.classList.toggle('hidden', !!eventMode);
+  if(dom.eventPanel) dom.eventPanel.classList.toggle('show', !!eventMode);
+
+  // Runtime panel always visible under events list
+  ensureRuntime();
+  const rt = state.sequence.runtime;
+  if(dom.chkEnableProxies && document.activeElement !== dom.chkEnableProxies){
+    dom.chkEnableProxies.checked = !!rt.enableProxies;
+  }
+  if(dom.chkEnableHelpers && document.activeElement !== dom.chkEnableHelpers){
+    dom.chkEnableHelpers.checked = rt.enableHelpers !== false;
+  }
+  if(dom.inpOnUpdate && document.activeElement !== dom.inpOnUpdate){
+    dom.inpOnUpdate.value = rt.onUpdateCode || '';
+  }
+  if(dom.inpPostReceptor && document.activeElement !== dom.inpPostReceptor){
+    dom.inpPostReceptor.value = rt.postReceptorCode || '';
+  }
+  refreshBlankModsList();
+
+  if(eventMode){
+    const ev = state.selectedEvent;
+    if(document.activeElement !== dom.selEvtType) dom.selEvtType.value = ev.type || 'funcOnce';
+    if(document.activeElement !== dom.inpEvtName) dom.inpEvtName.value = ev.name || '';
+    if(document.activeElement !== dom.inpEvtStep) dom.inpEvtStep.value = ev.step || 0;
+    if(document.activeElement !== dom.inpEvtEnd) dom.inpEvtEnd.value = ev.endStep || 0;
+    if(document.activeElement !== dom.evtCode) dom.evtCode.value = ev.code || '';
+    if(document.activeElement !== dom.inpEvtColor) dom.inpEvtColor.value = ev.color || '#ff9800';
+    if(dom.chkEvtVisible) dom.chkEvtVisible.checked = ev.visible !== false;
+    if(document.activeElement !== dom.inpEvtModname) dom.inpEvtModname.value = ev.modName || '';
+    if(document.activeElement !== dom.inpEvtDefault) dom.inpEvtDefault.value = ev.defaultVal != null ? ev.defaultVal : 0;
+    const isBlank = (ev.type === 'blankMod');
+    if(dom.blankModRow) dom.blankModRow.style.display = isBlank ? 'flex' : 'none';
+    if(dom.inpEvtEnd) dom.inpEvtEnd.disabled = (ev.type !== 'func');
+    if(dom.evtCode) dom.evtCode.disabled = isBlank;
+  }
+
   const t = state.selectedTrack;
   const hasTrack = !!t;
-  dom.trackBadge.textContent = t ? t.name : 'none';
-  dom.trackBadge.style.background = t ? t.color : '#555';
+  if(dom.trackBadge){
+    dom.trackBadge.textContent = t ? t.name : 'none';
+    dom.trackBadge.style.background = t ? t.color : '#555';
+  }
   for(const id of ['selModifier','selTarget','inpColor','chkVisible','chkLocked','btnRemoveTrack','chkCont','selContFunc','inpContStart','inpContEnd']){
     if(dom[id]) dom[id].disabled = !hasTrack || (hasTrack && t.locked && id!=='btnRemoveTrack');
   }
@@ -3518,15 +4570,15 @@ function refreshInspector(){
     if(document.activeElement !== dom.selModifier) dom.selModifier.value = t.modifier;
     if(document.activeElement !== dom.selTarget) dom.selTarget.value = t.target;
     if(document.activeElement !== dom.inpColor) dom.inpColor.value = t.color;
-    dom.chkVisible.checked = t.visible;
-    dom.chkLocked.checked = t.locked;
+    if(dom.chkVisible) dom.chkVisible.checked = t.visible;
+    if(dom.chkLocked) dom.chkLocked.checked = t.locked;
     if(dom.chkCont) dom.chkCont.checked = !!t.continuous;
     if(dom.selContFunc) dom.selContFunc.value = t.continuousFunc || '';
     if(dom.inpContStart && document.activeElement !== dom.inpContStart) dom.inpContStart.value = t.continuousStart||0;
     if(dom.inpContEnd && document.activeElement !== dom.inpContEnd) dom.inpContEnd.value = t.continuousEnd||0;
   }
   const sel = state.selected;
-  dom.kfCount.textContent = sel.length ? sel.length+' keyframe'+(sel.length>1?'s':'') : 'none selected';
+  if(dom.kfCount) dom.kfCount.textContent = sel.length ? sel.length+' keyframe'+(sel.length>1?'s':'') : 'none selected';
   for(const id of ['inpValue','selKfMode','selKfApi','selEase','inpDuration']) if(dom[id]) dom[id].disabled = !sel.length;
   if(sel.length){
     const k = sel[0];
@@ -3536,6 +4588,7 @@ function refreshInspector(){
     if(document.activeElement !== dom.selEase) dom.selEase.value = k.ease;
     if(document.activeElement !== dom.inpDuration) dom.inpDuration.value = k.duration;
   }
+  refreshEventList();
   updateTransportBtn();
 }
 
@@ -3584,6 +4637,7 @@ function afterChange(){
   getEngine();
   rebuildHeaders();
   rebuildKeyframes();
+  refreshEventMarkers();
   recalcSongLength();
   updateLayout();
   refreshInspector();
@@ -3856,6 +4910,97 @@ function wireInspector(){
   });
 }
 
+
+function wireEventUI(){
+  const addEv = ()=>{
+    // Chart-editor style: if a preset is selected in the dropdown, use it; else funcOnce
+    const sel = document.getElementById('sel-evt-preset');
+    const key = sel && sel.value ? sel.value : '';
+    if(key && EVENT_PRESETS[key]){
+      addEvent(EVENT_PRESETS[key].type, key);
+    } else {
+      addEvent('funcOnce');
+    }
+  };
+  if(dom.btnAddEvent) dom.btnAddEvent.addEventListener('click', addEv);
+  if(dom.btnAddEvent2) dom.btnAddEvent2.addEventListener('click', addEv);
+  if(dom.btnCloseEvent) dom.btnCloseEvent.addEventListener('click', closeEventPanel);
+  if(dom.btnRemoveEvent) dom.btnRemoveEvent.addEventListener('click', ()=>{
+    if(state.selectedEvent) removeEvent(state.selectedEvent);
+  });
+  if(dom.selEvtType) dom.selEvtType.addEventListener('change', ()=>{
+    applyEventField('type', dom.selEvtType.value);
+  });
+  if(dom.inpEvtName) dom.inpEvtName.addEventListener('change', ()=>{
+    applyEventField('name', dom.inpEvtName.value);
+  });
+  if(dom.inpEvtStep) dom.inpEvtStep.addEventListener('change', ()=>{
+    const v = parseFloat(dom.inpEvtStep.value);
+    if(Number.isFinite(v)) applyEventField('step', v);
+  });
+  if(dom.inpEvtEnd) dom.inpEvtEnd.addEventListener('change', ()=>{
+    const v = parseFloat(dom.inpEvtEnd.value);
+    if(Number.isFinite(v)) applyEventField('endStep', v);
+  });
+  if(dom.evtCode) dom.evtCode.addEventListener('change', ()=>{
+    applyEventField('code', dom.evtCode.value);
+  });
+  if(dom.inpEvtColor) dom.inpEvtColor.addEventListener('change', ()=>{
+    applyEventField('color', dom.inpEvtColor.value);
+  });
+  if(dom.chkEvtVisible) dom.chkEvtVisible.addEventListener('change', ()=>{
+    applyEventField('visible', dom.chkEvtVisible.checked);
+  });
+  if(dom.inpEvtModname) dom.inpEvtModname.addEventListener('change', ()=>{
+    applyEventField('modName', dom.inpEvtModname.value.trim());
+  });
+  if(dom.inpEvtDefault) dom.inpEvtDefault.addEventListener('change', ()=>{
+    const v = parseFloat(dom.inpEvtDefault.value);
+    if(Number.isFinite(v)) applyEventField('defaultVal', v);
+  });
+  if(dom.chkEnableProxies) dom.chkEnableProxies.addEventListener('change', ()=>{
+    ensureRuntime();
+    state.sequence.runtime.enableProxies = dom.chkEnableProxies.checked;
+    flashStatus(dom.chkEnableProxies.checked ? 'ProxyFields: On' : 'ProxyFields: Off');
+  });
+  if(dom.chkEnableHelpers) dom.chkEnableHelpers.addEventListener('change', ()=>{
+    ensureRuntime();
+    state.sequence.runtime.enableHelpers = dom.chkEnableHelpers.checked;
+  });
+  if(dom.inpOnUpdate) dom.inpOnUpdate.addEventListener('change', ()=>{
+    ensureRuntime();
+    state.sequence.runtime.onUpdateCode = dom.inpOnUpdate.value;
+  });
+  if(dom.inpPostReceptor) dom.inpPostReceptor.addEventListener('change', ()=>{
+    ensureRuntime();
+    state.sequence.runtime.postReceptorCode = dom.inpPostReceptor.value;
+  });
+  const btnProxShell = document.getElementById('btn-enable-proxies-shell');
+  if(btnProxShell) btnProxShell.addEventListener('click', enableProxiesShell);
+  const btnClearRt = document.getElementById('btn-clear-runtime');
+  if(btnClearRt) btnClearRt.addEventListener('click', clearRuntimeFields);
+  const selPreset = document.getElementById('sel-evt-preset');
+  if(selPreset) selPreset.addEventListener('change', ()=>{
+    if(!state.selectedEvent) return;
+    const key = selPreset.value;
+    if(!key) return;
+    applyEventPreset(state.selectedEvent, key);
+    // Keep proxies shell on when using proxy presets
+    if(key === 'proxyShow' || key === 'proxyHide'){
+      ensureRuntime();
+      state.sequence.runtime.enableProxies = true;
+      state.sequence.runtime.enableHelpers = true;
+      if(dom.chkEnableProxies) dom.chkEnableProxies.checked = true;
+    }
+    if(key.indexOf('blank_') === 0 || key === 'blankMod' || key.indexOf('halo') >= 0){
+      ensureRuntime();
+      state.sequence.runtime.enableHelpers = true;
+    }
+    afterChange();
+    flashStatus('Applied preset: ' + (EVENT_PRESETS[key] && EVENT_PRESETS[key].name || key));
+  });
+}
+
 function wireTimeline(){
   dom.rulerCanvas.addEventListener('mousedown', onRulerMouseDown);
   dom.lanes.addEventListener('mousedown', onLanesMouseDown);
@@ -3954,7 +5099,18 @@ function init(){
     inpValue:$('inp-value'), selKfMode:$('sel-kf-mode'), selKfApi:$('sel-kf-api'), selEase:$('sel-ease'), inpDuration:$('inp-duration'),
     timeTxt:$('time-txt'), status:$('status'),
     chkCont:$('chk-cont'), selContFunc:$('sel-cont-func'),
-    inpContStart:$('inp-cont-start'), inpContEnd:$('inp-cont-end')
+    inpContStart:$('inp-cont-start'), inpContEnd:$('inp-cont-end'),
+    // events / runtime
+    btnAddEvent:$('btn-add-event'), btnAddEvent2:$('btn-add-event-2'),
+    btnCloseEvent:$('btn-close-event'), btnRemoveEvent:$('btn-remove-event'),
+    classicPanels:$('classic-panels'), eventPanel:$('event-panel'),
+    selEvtType:$('sel-evt-type'), inpEvtName:$('inp-evt-name'),
+    inpEvtStep:$('inp-evt-step'), inpEvtEnd:$('inp-evt-end'),
+    evtCode:$('evt-code'), inpEvtColor:$('inp-evt-color'), chkEvtVisible:$('chk-evt-visible'),
+    blankModRow:$('blank-mod-row'), inpEvtModname:$('inp-evt-modname'), inpEvtDefault:$('inp-evt-default'),
+    evtList:$('evt-list'), evtCount:$('evt-count'),
+    chkEnableProxies:$('chk-enable-proxies'), chkEnableHelpers:$('chk-enable-helpers'),
+    inpOnUpdate:$('inp-onupdate'), inpPostReceptor:$('inp-postreceptor')
   };
 
   fillSelect(dom.selModifier, modifierList, 'transformX');
@@ -3975,6 +5131,7 @@ function init(){
   newSequence();
   wireTimeline();
   wireInspector();
+  wireEventUI();
   wireKeyboard();
   afterChange();
   updateLayout();
