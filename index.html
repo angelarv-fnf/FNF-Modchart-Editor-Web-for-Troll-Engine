@@ -133,10 +133,11 @@ label.check { flex-direction: row; align-items: center; gap: 6px; color: var(--t
 
 /* main layout */
 main {
-  flex: 1; display: flex; gap: 10px; padding: 10px 12px; min-height: 0;
+  flex: 1; display: flex; gap: 0; padding: 10px 12px; min-height: 0;
+  position: relative;
 }
 #preview-wrap {
-  flex: 1; display: flex; min-width: 0; position: relative;
+  flex: 1; display: flex; min-width: 120px; position: relative;
 }
 #preview-wrap canvas {
   width: 100%; aspect-ratio: 16 / 9; max-width: 100%; max-height: 100%;
@@ -144,9 +145,35 @@ main {
   border: 1px solid var(--border);
 }
 #inspector {
-  width: 320px; flex: none; display: flex; flex-direction: column;
-  gap: 10px; overflow-y: auto;
+  width: var(--inspector-w, 320px); flex: none; display: flex; flex-direction: column;
+  gap: 10px; overflow-y: auto; min-width: 180px; max-width: 55vw;
 }
+
+/* Vertical splitter (preview ↔ settings) */
+.v-split {
+  flex: none; width: 10px; cursor: col-resize; position: relative;
+  display: flex; align-items: center; justify-content: center;
+  user-select: none; z-index: 15;
+  margin: 0 2px;
+}
+.v-split::before {
+  content: '';
+  width: 4px; height: 48px; border-radius: 3px;
+  background: var(--border);
+  transition: background 0.15s, height 0.15s;
+}
+.v-split:hover::before, .v-split.dragging::before {
+  background: var(--accent); height: 64px;
+}
+.v-split .grip {
+  position: absolute; display: flex; flex-direction: column; gap: 3px;
+  pointer-events: none;
+}
+.v-split .grip span {
+  width: 4px; height: 4px; border-radius: 50%;
+  background: var(--muted);
+}
+.v-split:hover .grip span, .v-split.dragging .grip span { background: var(--accent); }
 .panel {
   background: var(--panel); border: 1px solid var(--border);
   border-radius: 10px; padding: 10px 12px;
@@ -165,9 +192,35 @@ main {
 .panel .row { display: flex; gap: 8px; align-items: flex-end; }
 .panel .row label { flex: 1; }
 
+/* Horizontal splitter (main ↔ timeline) */
+.h-split {
+  flex: none; height: 10px; cursor: row-resize; position: relative;
+  display: flex; align-items: center; justify-content: center;
+  user-select: none; z-index: 15;
+  background: transparent;
+}
+.h-split::before {
+  content: '';
+  height: 4px; width: 56px; border-radius: 3px;
+  background: var(--border);
+  transition: background 0.15s, width 0.15s;
+}
+.h-split:hover::before, .h-split.dragging::before {
+  background: var(--accent); width: 80px;
+}
+.h-split .grip {
+  position: absolute; display: flex; gap: 3px;
+  pointer-events: none;
+}
+.h-split .grip span {
+  width: 4px; height: 4px; border-radius: 50%;
+  background: var(--muted);
+}
+.h-split:hover .grip span, .h-split.dragging .grip span { background: var(--accent); }
+
 /* timeline */
 #timeline {
-  flex: none; height: 38%; min-height: 210px; max-height: 420px;
+  flex: none; height: var(--timeline-h, 280px); min-height: 160px; max-height: 55vh;
   display: flex; flex-direction: column;
   background: var(--panel); border-top: 1px solid var(--border);
 }
@@ -244,10 +297,13 @@ main {
 
 /* events */
 .event-marker {
-  position: absolute; top: 2px; bottom: 2px; width: 8px;
+  position: absolute; top: 1px; bottom: 1px; width: 8px;
   border-radius: 2px; cursor: pointer; pointer-events: auto;
   border: 1px solid rgba(0,0,0,0.45);
   z-index: 6;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
 }
 .event-marker.selected {
   outline: 2px solid #ffd500;
@@ -331,6 +387,9 @@ main {
   <section id="preview-wrap">
     <canvas id="preview" width="1280" height="720"></canvas>
   </section>
+  <div id="v-splitter" class="v-split" title="Drag to resize preview / settings">
+    <div class="grip"><span></span><span></span><span></span></div>
+  </div>
   <aside id="inspector">
     <div id="classic-panels">
     <section class="panel">
@@ -345,6 +404,7 @@ main {
       <h2>Chart Preview</h2>
       <label class="check"><input id="chk-show-chart" type="checkbox" checked> Show falling notes</label>
       <label class="check"><input id="chk-show-guides" type="checkbox" checked> Lane guide lines</label>
+      <label class="check"><input id="chk-use-sprites" type="checkbox" checked> Use real note sprites</label>
       <label>Scroll speed <input id="inp-chart-speed" type="number" step="0.05" min="0.1" value="1"></label>
       <div id="chart-info" style="color:var(--muted);font-size:11px;margin-top:6px;line-height:1.4">No chart loaded</div>
       <button id="btn-clear-chart" class="danger" style="margin-top:8px">Clear Chart</button>
@@ -486,6 +546,10 @@ main {
   </aside>
 </main>
 
+<div id="h-splitter" class="h-split" title="Drag to resize timeline">
+  <div class="grip"><span></span><span></span><span></span></div>
+</div>
+
 <section id="timeline">
   <div id="tl-scroll">
     <div id="ruler-wrap"><canvas id="ruler"></canvas></div>
@@ -553,6 +617,69 @@ const palette = [
 ];
 const laneColors = ['#c44bff','#3dcfff','#35ff5a','#ff5a3d'];
 const dirAngle = [-Math.PI/2, Math.PI, 0, Math.PI/2];
+
+/* ---------- Real FNF note sprites (from assets/) ---------- */
+// Frame rects extracted from NOTE_assets.xml (Tex-Packer)
+const NOTE_FRAMES = {
+  "arrowLEFT0000":  {x:913, y:168, w:154, h:157},
+  "arrowDOWN0000":  {x:874, y:439, w:157, h:154},
+  "arrowUP0000":    {x:918, y:758, w:157, h:154},
+  "arrowRIGHT0000": {x:918, y:597, w:154, h:157},
+  "arrowSQUARE0000":{x:701, y:439, w:169, h:162},
+  "purple0000":     {x:454, y:915, w:154, h:157}, // left
+  "blue0000":       {x:697, y:906, w:157, h:154}, // down
+  "green0000":      {x:858, y:916, w:157, h:154}, // up
+  "red0000":        {x:218, y:918, w:154, h:157}, // right
+  "left confirm0000":  {x:476, y:466, w:221, h:223},
+  "down confirm0000":  {x:245, y:2,   w:229, h:228},
+  "up confirm0000":    {x:245, y:466, w:227, h:226},
+  "right confirm0000": {x:476, y:693, w:217, h:218},
+  "purple hold piece0000": {x:612, y:1011, w:50, h:44},
+  "blue hold piece0000":   {x:612, y:915,  w:50, h:44},
+  "green hold piece0000":  {x:612, y:963,  w:50, h:44},
+  "red hold piece0000":    {x:529, y:1076, w:50, h:44},
+  "pruple end hold0000":   {x:309, y:1147, w:50, h:64}, // typo in original atlas
+  "blue hold end0000":     {x:163, y:990,  w:50, h:64},
+  "green hold end0000":    {x:309, y:1079, w:50, h:64},
+  "red hold end0000":      {x:376, y:918,  w:50, h:64}
+};
+const NOTE_HEAD_NAMES  = ['purple0000','blue0000','green0000','red0000'];
+const RECEPTOR_NAMES   = ['arrowLEFT0000','arrowDOWN0000','arrowUP0000','arrowRIGHT0000'];
+const CONFIRM_NAMES    = ['left confirm0000','down confirm0000','up confirm0000','right confirm0000'];
+const HOLD_PIECE_NAMES = ['purple hold piece0000','blue hold piece0000','green hold piece0000','red hold piece0000'];
+const HOLD_END_NAMES   = ['pruple end hold0000','blue hold end0000','green hold end0000','red hold end0000'];
+
+const assets = {
+  noteImg: null,
+  splashImg: null,
+  backdropImg: null,
+  eventArrowImg: null,
+  loaded: false,
+  useSprites: true
+};
+
+function loadPreviewAssets(){
+  const base = 'assets/';
+  let pending = 0;
+  const done = ()=>{
+    pending--;
+    if(pending <= 0){
+      assets.loaded = !!(assets.noteImg && assets.noteImg.complete && assets.noteImg.naturalWidth > 0);
+      if(assets.loaded) flashStatus('Note sprites + assets loaded');
+    }
+  };
+  const load = (key, src)=>{
+    pending++;
+    const img = new Image();
+    img.onload = ()=>{ assets[key] = img; done(); };
+    img.onerror = ()=>{ console.warn('Asset load failed:', src); done(); };
+    img.src = base + src;
+  };
+  load('noteImg', 'NOTE_assets.png');
+  load('splashImg', 'noteSplashes.png');
+  load('backdropImg', 'backdrop.png');
+  load('eventArrowImg', 'eventArrow.png');
+}
 
 const modifierList = [
   // === Core transforms (TransformModifier + aux) ===
@@ -2008,21 +2135,64 @@ function shade(hex, amt){
   return 'rgb('+r+','+g+','+b+')';
 }
 
-function drawArrow(ctx, x, y, dir, angle, sx, sy, alpha, size, glow){
-  // Rotate each arrow around its OWN center.
+/** Procedural hold line (used when sprites are off or missing) */
+function drawHoldLineFallback(ctx, pts, col, alpha, scale){
+  if(!pts || pts.length < 2) return;
+  ctx.save();
+  ctx.globalAlpha = 0.42 * alpha;
+  ctx.strokeStyle = col;
+  ctx.lineWidth = Math.max(4, 14 * scale);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for(let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.stroke();
+  ctx.globalAlpha = 0.55 * alpha;
+  ctx.lineWidth = Math.max(2, 6 * scale);
+  ctx.strokeStyle = '#ffffff';
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawArrow(ctx, x, y, dir, angle, sx, sy, alpha, size, glow, isReceptor){
+  // Hybrid: real FNF sprites when loaded, otherwise procedural arrow path.
   // confusion / confusionOffset / receptorAngle → local spin (ConfusionModifier).
-  // rotate*/centerrotate* only move position; they do not feed this angle.
   // glow = AlphaModifier.getGlow (white flash as stealth/dark fades the note)
   if (glow === undefined || glow === null) glow = 0;
+  if (isReceptor === undefined) isReceptor = false;
+
+  // Prefer real sprites from NOTE_assets.png
+  if (assets.loaded && assets.useSprites && assets.noteImg) {
+    const name = isReceptor ? RECEPTOR_NAMES[dir] : NOTE_HEAD_NAMES[dir];
+    const f = NOTE_FRAMES[name];
+    if (f) {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+      ctx.translate(x, y);
+      ctx.rotate(angle * Math.PI / 180); // only confusion-style spin (sprites are already oriented)
+      if (glow > 0.05) {
+        ctx.shadowColor = 'rgba(255,255,255,' + Math.min(1, 0.4 + glow) + ')';
+        ctx.shadowBlur = 16 + glow * 28;
+      }
+      // size is approximate target height; scale uniformly to fit
+      const scale = (size / Math.max(f.w, f.h)) * 1.05;
+      ctx.scale(sx * scale, sy * scale);
+      ctx.drawImage(assets.noteImg, f.x, f.y, f.w, f.h, -f.w/2, -f.h/2, f.w, f.h);
+      ctx.restore();
+      return;
+    }
+  }
+
+  // Fallback procedural drawing (original)
   ctx.save();
   ctx.globalAlpha = Math.max(0, alpha);
   ctx.translate(x, y);
-  ctx.rotate(angle * Math.PI / 180);   // per-note / per-receptor spin
-  ctx.rotate(dirAngle[dir]);           // point the arrow in the correct direction
+  ctx.rotate(angle * Math.PI / 180);
+  ctx.rotate(dirAngle[dir]);
   ctx.scale(sx, sy);
   const s = size;
   const col = laneColors[dir];
-  // Mix in white as glow rises (NotITG stealth glow)
   ctx.shadowColor = glow > 0.05 ? 'rgba(255,255,255,' + Math.min(1, 0.35 + glow) + ')' : col;
   ctx.shadowBlur = 18 + glow * 22;
   ctx.beginPath();
@@ -2036,7 +2206,6 @@ function drawArrow(ctx, x, y, dir, angle, sx, sy, alpha, size, glow){
   ctx.closePath();
   const g = ctx.createLinearGradient(0, -s*0.5, 0, s*0.5);
   if (glow > 0.05) {
-    // blend toward white for stealth/dark glow
     g.addColorStop(0, 'rgba(255,255,255,' + (0.55 + glow * 0.45) + ')');
     g.addColorStop(1, 'rgba(255,255,255,' + (0.25 + glow * 0.55) + ')');
   } else {
@@ -2059,9 +2228,23 @@ function renderPreview(){
   const dpr = Math.min(window.devicePixelRatio||1, 2);
   if(c.width !== W*dpr){ c.width=W*dpr; c.height=H*dpr; }
   ctx.setTransform(dpr,0,0,dpr,0,0);
+  // Background: soft gradient + optional backdrop tile
   const g = ctx.createLinearGradient(0,0,0,H);
   g.addColorStop(0,'#161a22'); g.addColorStop(1,'#0c0e13');
   ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
+  if(assets.backdropImg && assets.backdropImg.complete){
+    ctx.save();
+    ctx.globalAlpha = 0.18;
+    // tile / stretch the small backdrop
+    const bw = assets.backdropImg.naturalWidth || 64;
+    const bh = assets.backdropImg.naturalHeight || 64;
+    for(let yy=0; yy<H; yy+=bh*2){
+      for(let xx=0; xx<W; xx+=bw*2){
+        ctx.drawImage(assets.backdropImg, xx, yy, bw*2, bh*2);
+      }
+    }
+    ctx.restore();
+  }
 
   // Lane guide lines – path-sampled rails that warp with the same mods as notes/holds.
   // Samples several visualDiffs so centerrotateX / drunk / path / reverse curve the guides
@@ -2115,7 +2298,7 @@ function renderPreview(){
     ctx.globalAlpha = 0.12;
     for(let p=0;p<2;p++) for(let d=0;d<4;d++){
       const b = baseReceptorPos(p,d);
-      drawArrow(ctx, b.x, b.y, d, 0, 1, 1, 1, p===0?96:84);
+      drawArrow(ctx, b.x, b.y, d, 0, 1, 1, 1, p===0?96:84, 0, true);
     }
     ctx.restore();
   }
@@ -2134,7 +2317,7 @@ function renderPreview(){
     const windowPast = 400;
     const windowFuture = 2200;
     const pos = state.songPos;
-    const HOLD_SEGS = 12; // like NoteField.holdSubdivisions
+    const HOLD_SEGS = 16; // more segments = smoother curved holds with sprites
 
     for(const n of state.chartNotes){
       const dt = n.t - pos; // positive = upcoming
@@ -2155,21 +2338,63 @@ function renderPreview(){
         let anyOn = false;
         for(const p of pts){ if(p.y > -40 && p.y < H + 40){ anyOn = true; break; } }
         if(anyOn){
-          ctx.save();
-          ctx.globalAlpha = 0.42 * (head.alpha != null ? head.alpha : 1);
-          ctx.strokeStyle = col;
-          ctx.lineWidth = Math.max(4, 14 * (head.scaleX || 1));
-          ctx.lineCap = 'round';
-          ctx.lineJoin = 'round';
-          ctx.beginPath();
-          ctx.moveTo(pts[0].x, pts[0].y);
-          for(let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-          ctx.stroke();
-          ctx.globalAlpha = 0.55 * (head.alpha != null ? head.alpha : 1);
-          ctx.lineWidth = Math.max(2, 6 * (head.scaleX || 1));
-          ctx.strokeStyle = '#ffffff';
-          ctx.stroke();
-          ctx.restore();
+          const a = Math.min(1, (head.alpha != null ? head.alpha : 1));
+          const sc = (head.scaleX || 1);
+
+          // Prefer real hold sprites when available
+          if(assets.loaded && assets.useSprites && assets.noteImg){
+            const pieceName = HOLD_PIECE_NAMES[n.data];
+            const endName   = HOLD_END_NAMES[n.data];
+            const piece = NOTE_FRAMES[pieceName];
+            const endF  = NOTE_FRAMES[endName];
+            if(piece){
+              ctx.save();
+              ctx.globalAlpha = 0.85 * a;
+              // Draw hold body as oriented sprites between consecutive points
+              for(let i = 0; i < pts.length - 1; i++){
+                const p0 = pts[i], p1 = pts[i+1];
+                const dx = p1.x - p0.x, dy = p1.y - p0.y;
+                const len = Math.hypot(dx, dy);
+                if(len < 2) continue;
+                // Skip if both ends are way off-screen
+                if((p0.y < -60 && p1.y < -60) || (p0.y > H+60 && p1.y > H+60)) continue;
+                const ang = Math.atan2(dy, dx) - Math.PI/2; // sprites are upright
+                const midX = (p0.x + p1.x) * 0.5;
+                const midY = (p0.y + p1.y) * 0.5;
+                const targetW = piece.w * 0.55 * sc; // thinner than heads
+                ctx.save();
+                ctx.translate(midX, midY);
+                ctx.rotate(ang);
+                // Stretch the piece vertically to cover the segment length
+                ctx.drawImage(assets.noteImg, piece.x, piece.y, piece.w, piece.h,
+                  -targetW/2, -len/2, targetW, len + 1);
+                ctx.restore();
+              }
+              // Hold end (tip) at the far end of the sustain
+              if(endF && pts.length > 1){
+                const tip = pts[pts.length - 1];
+                const prev = pts[pts.length - 2];
+                const dx = tip.x - prev.x, dy = tip.y - prev.y;
+                const ang = Math.atan2(dy, dx) - Math.PI/2;
+                const endScale = 0.55 * sc;
+                ctx.save();
+                ctx.globalAlpha = 0.95 * a;
+                ctx.translate(tip.x, tip.y);
+                ctx.rotate(ang);
+                ctx.drawImage(assets.noteImg, endF.x, endF.y, endF.w, endF.h,
+                  -endF.w * endScale / 2, -endF.h * endScale * 0.15,
+                  endF.w * endScale, endF.h * endScale);
+                ctx.restore();
+              }
+              ctx.restore();
+            } else {
+              // fallback if frame missing
+              drawHoldLineFallback(ctx, pts, col, a, sc);
+            }
+          } else {
+            // Procedural line fallback
+            drawHoldLineFallback(ctx, pts, col, a, sc);
+          }
         }
       }
 
@@ -2177,7 +2402,7 @@ function renderPreview(){
         // Base size only — scaleX/scaleY go through drawArrow's ctx.scale (same as receptors).
         // Previously size was multiplied by scaleX AND ctx.scale used scaleX → intensity² on notes.
         const size = (n.player === 0 ? 72 : 64) * 0.92;
-        drawArrow(ctx, head.x, head.y, n.data, head.angle || 0, head.scaleX || 1, head.scaleY || 1, Math.min(1, head.alpha != null ? head.alpha : 1), size, head.glow != null ? head.glow : 0);
+        drawArrow(ctx, head.x, head.y, n.data, head.angle || 0, head.scaleX || 1, head.scaleY || 1, Math.min(1, head.alpha != null ? head.alpha : 1), size, head.glow != null ? head.glow : 0, false);
       }
     }
   }
@@ -2186,7 +2411,7 @@ function renderPreview(){
   for(let p=0;p<2;p++) for(let d=0;d<4;d++){
     const r = computeReceptor(engine, p, d, beat, timeSec);
     const size = (p===0?96:84) * pulse;
-    drawArrow(ctx, r.x, r.y, d, r.angle, r.scaleX, r.scaleY, r.alpha, size, r.glow != null ? r.glow : 0);
+    drawArrow(ctx, r.x, r.y, d, r.angle, r.scaleX, r.scaleY, r.alpha, size, r.glow != null ? r.glow : 0, true);
   }
 
   // ---------- ProxyField ghosts (visual only – mirrors engine + bludlus) ----------
@@ -2224,10 +2449,10 @@ function renderPreview(){
           for (let d = 0; d < 4; d++) {
             const r0 = computeReceptor(engine, 0, d, beat, timeSec);
             drawArrow(ctx, r0.x + dadOffsets[i], r0.y, d, r0.angle, r0.scaleX, r0.scaleY,
-              Math.min(1, (r0.alpha != null ? r0.alpha : 1) * aDad), 96 * pulse * 0.88, 0);
+              Math.min(1, (r0.alpha != null ? r0.alpha : 1) * aDad), 96 * pulse * 0.88, 0, true);
             const r1 = computeReceptor(engine, 1, d, beat, timeSec);
             drawArrow(ctx, r1.x + bfOffsets[i], r1.y, d, r1.angle, r1.scaleX, r1.scaleY,
-              Math.min(1, (r1.alpha != null ? r1.alpha : 1) * aBf), 84 * pulse * 0.88, 0);
+              Math.min(1, (r1.alpha != null ? r1.alpha : 1) * aBf), 84 * pulse * 0.88, 0, true);
           }
         }
         ctx.save();
@@ -4463,10 +4688,20 @@ function refreshEventMarkers(){
     el.className = 'event-marker' + (ev===state.selectedEvent ? ' selected' : '');
     el.style.left = ((ev.step||0) * pps) + 'px';
     el.style.background = ev.color || '#ff9800';
+    // Prefer the eventArrow sprite when available
+    if(assets.eventArrowImg && assets.eventArrowImg.complete){
+      el.style.backgroundImage = 'url(assets/eventArrow.png)';
+      el.style.backgroundSize = 'contain';
+      el.style.backgroundRepeat = 'no-repeat';
+      el.style.backgroundPosition = 'center';
+      el.style.width = '18px';
+      el.style.borderRadius = '3px';
+    }
     el.title = (eventTypeLabels[ev.type]||ev.type) + ' @ ' + ev.step + (ev.name ? ' — '+ev.name : '');
     if(ev.type === 'func' && (ev.endStep||0) > (ev.step||0)){
       el.style.width = Math.max(8, ((ev.endStep - ev.step) * pps)) + 'px';
       el.style.opacity = '0.55';
+      el.style.backgroundImage = 'none'; // range events stay solid bars
     }
     el.addEventListener('mousedown', e=>{
       e.stopPropagation(); e.preventDefault();
@@ -4857,6 +5092,13 @@ function wireInspector(){
       flashStatus(state.showGuides ? 'Lane guides: On' : 'Lane guides: Off');
     });
   }
+  if(dom.chkUseSprites){
+    dom.chkUseSprites.checked = !!assets.useSprites;
+    dom.chkUseSprites.addEventListener('change', ()=>{
+      assets.useSprites = dom.chkUseSprites.checked;
+      flashStatus(assets.useSprites ? 'Real note sprites: On' : 'Procedural arrows: On');
+    });
+  }
   if(dom.inpChartSpeed){
     dom.inpChartSpeed.value = state.chartSpeed;
     dom.inpChartSpeed.addEventListener('change', ()=>{
@@ -5061,6 +5303,97 @@ document.addEventListener('visibilitychange', ()=>{
   }
 });
 
+/* ---------- Live resizable splitters (preview ↔ settings, main ↔ timeline) ---------- */
+function wireSplitters(){
+  const root = document.documentElement;
+  // Restore previous sizes if any
+  try {
+    const iw = localStorage.getItem('fnf-editor-inspector-w');
+    const th = localStorage.getItem('fnf-editor-timeline-h');
+    if(iw) root.style.setProperty('--inspector-w', iw + 'px');
+    if(th) root.style.setProperty('--timeline-h', th + 'px');
+  } catch(e){}
+
+  // Vertical: preview ↔ inspector
+  const vSplit = document.getElementById('v-splitter');
+  const inspector = document.getElementById('inspector');
+  if(vSplit && inspector){
+    let dragging = false;
+    vSplit.addEventListener('mousedown', e=>{
+      e.preventDefault();
+      dragging = true;
+      vSplit.classList.add('dragging');
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    });
+    window.addEventListener('mousemove', e=>{
+      if(!dragging) return;
+      // main content area (inside the padding)
+      const main = document.querySelector('main');
+      if(!main) return;
+      const rect = main.getBoundingClientRect();
+      // distance from right edge of main (inspector is on the right)
+      const fromRight = rect.right - e.clientX;
+      const minW = 180, maxW = Math.min(rect.width * 0.55, 560);
+      const w = Math.max(minW, Math.min(maxW, fromRight - 6));
+      root.style.setProperty('--inspector-w', w + 'px');
+      // live update canvas layout
+      if(typeof updateLayout === 'function') updateLayout();
+      if(typeof renderPreview === 'function') renderPreview();
+    });
+    window.addEventListener('mouseup', ()=>{
+      if(!dragging) return;
+      dragging = false;
+      vSplit.classList.remove('dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      // persist
+      try {
+        const val = getComputedStyle(root).getPropertyValue('--inspector-w').trim();
+        const num = parseInt(val, 10);
+        if(num) localStorage.setItem('fnf-editor-inspector-w', String(num));
+      } catch(e){}
+    });
+  }
+
+  // Horizontal: main ↔ timeline
+  const hSplit = document.getElementById('h-splitter');
+  const timeline = document.getElementById('timeline');
+  if(hSplit && timeline){
+    let dragging = false;
+    hSplit.addEventListener('mousedown', e=>{
+      e.preventDefault();
+      dragging = true;
+      hSplit.classList.add('dragging');
+      document.body.style.cursor = 'row-resize';
+      document.body.style.userSelect = 'none';
+    });
+    window.addEventListener('mousemove', e=>{
+      if(!dragging) return;
+      const bodyRect = document.body.getBoundingClientRect();
+      // height from bottom of the viewport / body
+      const fromBottom = bodyRect.bottom - e.clientY;
+      const minH = 160, maxH = Math.min(window.innerHeight * 0.55, 520);
+      const h = Math.max(minH, Math.min(maxH, fromBottom - 4));
+      root.style.setProperty('--timeline-h', h + 'px');
+      if(typeof updateLayout === 'function') updateLayout();
+      if(typeof renderPreview === 'function') renderPreview();
+    });
+    window.addEventListener('mouseup', ()=>{
+      if(!dragging) return;
+      dragging = false;
+      hSplit.classList.remove('dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      try {
+        const val = getComputedStyle(root).getPropertyValue('--timeline-h').trim();
+        const num = parseInt(val, 10);
+        if(num) localStorage.setItem('fnf-editor-timeline-h', String(num));
+      } catch(e){}
+    });
+  }
+}
+
 function init(){
   dom = {
     btnNew: $('btn-new'),
@@ -5092,6 +5425,7 @@ function init(){
     inpSong:$('inp-song'), inpBpm:$('inp-bpm'),
     chkStaticArrows:$('chk-static-arrows'),
     chkShowChart:$('chk-show-chart'), chkShowGuides:$('chk-show-guides'),
+    chkUseSprites:$('chk-use-sprites'),
     inpChartSpeed:$('inp-chart-speed'), chartInfo:$('chart-info'),
     selModifier:$('sel-modifier'), selTarget:$('sel-target'),
     inpColor:$('inp-color'), chkVisible:$('chk-visible'), chkLocked:$('chk-locked'),
@@ -5133,6 +5467,8 @@ function init(){
   wireInspector();
   wireEventUI();
   wireKeyboard();
+  wireSplitters(); // live resizable preview ↔ settings + timeline
+  loadPreviewAssets(); // real note sprites, backdrop, event arrows, etc.
   afterChange();
   updateLayout();
   renderPreview();

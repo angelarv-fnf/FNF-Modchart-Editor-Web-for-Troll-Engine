@@ -1,99 +1,85 @@
-# FNF-Modchart-Editor-Web-for-Troll-Engine
-check out the github.io version
+# FNF Modchart Editor (Web) — Troll Engine / Psych
 
-this is still probably a **WIP**, but you can still use it if you want lol
+Standalone browser-based modchart / sequence editor for Friday Night Funkin' mods (Troll Engine + Vanilla Psych exports).
 
-## Engines You Should Use:
-* Recommended Engine Version: **"v0.2.0-beta.1"** or higher
-* Recommended Engine: "Troll Engine"
-
-## How to Find Troll Engine Release Tags (or something like that):
-https://github.com/troll-slaiyers/FNF-Troll-Engine/tags
-
-**If you want to stick with the v0.2.0-beta.1, here it is:**
-* https://github.com/troll-slaiyers/FNF-Troll-Engine/releases/tag/0.2.0-beta.1
-
-*oh, and also here is my github.io link lol:*
-* https://angelarv-fnf.github.io/FNF-Modchart-Editor-Web-for-Troll-Engine/
-
----
+**Live demo (GitHub Pages):** once published, open the repository's Pages URL (e.g. `https://YOURUSER.github.io/REPO/`).
 
 ## Features
 
-- Visual timeline with keyframes (add, move, delete, multi-select)
-- Multiple tracks, each targeting a modifier + player/opponent/lane
-- Live canvas preview of receptors with applied modifiers
-- Snap quantization (1/4 → 1/192) and zoom
-- Undo / Redo
-- Audio import (Inst OR Vocals) for scrubbing & playback
-- Continuous modifier functions (sine, cosine, linear, pulse, saw, square, hold, etc.)
-- Export formats:
-  - **Lua** (Troll Engine)
-  - **HScript**
-  - **JSON** (sequence.json)
-- Import:
-  - JSON sequences
-  - Lua / HScript (best-effort parse of `queueSet` / `queueEase`)
+- Timeline keyframe editor for modifiers (transform, drunk, tipsy, bumpy, reverse, confusion, scale, stealth, etc.)
+- Continuous functions (sine / cosine / pulse / saw / square / hold)
+- Timed events: `queueFuncOnce`, `queueFunc`, blank mods, ProxyField helpers
+- Live canvas preview of receptors + falling notes with modifier paths
+- Chart JSON import (Psych / Troll formats) for note preview
+- Audio (Inst/Vocals) scrubbing
+- Export:
+  - **Troll Engine** Lua / HScript
+  - **Vanilla Psych** Lua (+ Enhanced Modchart Template)
+  - sequence.json (re-importable)
+- Undo / redo, snap, zoom, import/export scripts
 
-### Supported modifiers (partial list)
-`transformX/Y/Z`, `confusionOffset`, `alpha`, `dark`, `reverse`, `flip`, `invert`, `centered`, `mini`, `tiny`, `squish`, `stretch`, `tipsy`, `drunk`, `bumpy`, `zigzag`, `sawtooth`, `square`, `bounce`, `tornado`, `xmod`, `opponentSwap`, `stealth`, `sudden`, camera mods, and many more.
+## Deploy to GitHub Pages
+
+1. Create a new GitHub repository (public).
+2. Upload the contents of this folder (or push via git):
+   ```bash
+   git init
+   git add .
+   git commit -m "FNF Modchart Editor for GitHub Pages"
+   git branch -M main
+   git remote add origin https://github.com/YOURUSER/YOURREPO.git
+   git push -u origin main
+   ```
+3. In the repo **Settings → Pages**:
+   - Source: **Deploy from a branch**
+   - Branch: `main` / root (`/`)
+4. Wait ~1 minute, then open `https://YOURUSER.github.io/YOURREPO/`.
+
+The site is pure static HTML/JS/CSS — no build step required. All logic is self-contained in `index.html`.
+
+## Local use
+
+Keep the `assets/` folder next to `index.html` and open the page in any modern browser (Chrome / Edge / Firefox).  
+
+For best results (especially with audio + sprites) serve the folder with a tiny static server, e.g.:
+
+```bash
+npx serve .
+# or
+python -m http.server 8000
+```
+
+Opening via `file://` still works for the editor itself; sprites simply fall back to procedural arrows if the browser blocks local image loads.
+
+## Assets & real sprites
+
+The `assets/` folder ships the standard FNF note spritesheets (NOTE_assets, noteSplashes, QUANT variants, alphabet, checkboxes, event arrows, backdrop, etc.).
+
+The live preview now **loads the real note sprites** by default:
+
+- Receptors → `arrowLEFT / DOWN / UP / RIGHT`
+- Falling notes → `purple / blue / green / red` heads
+- **Hold notes** → tiled `hold piece` sprites + `hold end` tip (follows curved paths from modifiers)
+- Event markers on the timeline use `eventArrow.png`
+- Soft tiled `backdrop.png` under the playfield
+
+A checkbox **“Use real note sprites”** in the Chart Preview panel lets you switch back to the original procedural arrows + line holds at any time. If the images fail to load (e.g. opening the single HTML via `file://` without the assets folder), the editor automatically falls back to procedural drawing.
+
+### Resizable panels
+
+Drag the **three-dot grips**:
+
+- **Vertical grip** (between preview and settings) → both the preview and the inspector scale in real time.
+- **Horizontal grip** (above the timeline) → timeline height vs preview area scale in real time.
+
+Sizes are remembered in `localStorage` across sessions.
+
+## Credits
+
+- Modchart math / modifiers inspired by Troll Engine (TheZoroForce240 & contributors)
+- Enhanced Psych template based on common community modchart patterns
+- Web editor UI & sequence system: standalone HTML version
 
 ---
 
-HOW TO USE MODCHART EDITOR:
-
-1. Open the editor (local HTML or the GitHub Pages link above).
-2. Set **Song** name and **BPM** in the Sequence panel.
-3. (Optional) Load an audio file with the **Audio** button.
-4. Select or add tracks. Choose a **Modifier** and **target** (both / player / opponent / lane0-3).
-5. Click on the timeline (or press **Enter**) to place keyframes at the playhead.
-6. Select a keyframe to edit its **value**, **mode** (Set / Ease / Both), **API** (normal / percent), **ease type**, and **duration**.
-7. Use the continuous panel if you want a modifier that runs every frame between two steps.
-8. Preview the receptors in the top canvas while scrubbing or playing.
-9. Export:
-   - **Lua** → drop into your Troll Engine modchart as a script
-   - **HScript** → alternative script format (probably not working i think, still in the works just to make it fully functionable i think, thats probably why, i think im using the troll-slaiyers version of troll engine instead of the riconuts version i think)
-   - **JSON** → save / share the sequence data
-
-### Keyboard shortcuts
-
-| Key | Action |
-|-----|--------|
-| `Space` | Play / Pause |
-| `Enter` | Add keyframe at playhead |
-| `Delete` / `Backspace` | Delete selected keyframes |
-| `Ctrl/Cmd + Z` | Undo |
-| `Ctrl/Cmd + Y` / `Ctrl/Cmd + Shift + Z` | Redo |
-| `Ctrl/Cmd + A` | Select all keyframes in current track |
-| `Z` / `X` | Zoom in / out |
-| `←` / `→` | Change snap quantization |
-
----
-
-## Export Notes (Troll Engine)
-
-The Lua exporter generates a ready-to-use script with:
-
-- `queueSet` / `queueEase` (and `P` variants)
-- Continuous function support via `queueContFunc`
-- Standard runtime hooks (`onCreate`, `onStepHit`, `onUpdate`, camera zoom handling, etc.)
-
-Only safe utility/camera mods are registered as blank mods so core note-effect modifiers keep their real engine implementations.
-
----
-
-## Local usage
-
-Just open the HTML file in any modern browser (Chrome / Firefox / Edge recommended).  
-No build step or server required.
-
----
-
-## Credits / License
-
-Created as a web port of my (probably failed) SequenceEditorState.hx concepts for Troll Engine. (yes, it was a concept but i moved it to the web so it's easier)
-
-have fun modcharting lol byee
-
-Reminder:
-If you find bugs or want features, open an issue or PR on the repo.
+Open the page, load a chart + audio, add tracks/keyframes/events, then export Lua/HScript for your engine.
