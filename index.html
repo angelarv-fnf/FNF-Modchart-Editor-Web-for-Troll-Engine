@@ -1030,7 +1030,8 @@ function bumpy(mod, data, visualDiff, axis){
   const period = mod(key + "Period") || mod("bumpyPeriod");
   const offset = mod(key + "Offset") || 0;
   if (period === -1) return 0;
-  const angle = (visualDiff + 100.0 * offset) / ((period * 16.0) + 16.0);
+  // Match current Troll DrunkModifier.hx: (period*24)+24
+  const angle = (visualDiff + 100.0 * offset) / ((period * 24.0) + 24.0);
   return perc * 40 * Math.sin(angle);
 }
 
@@ -1087,22 +1088,24 @@ function pathSquare(mod, data, diff){
 function pathBounce(mod, data, diff){
   const perc = mod("bounce");
   if (perc === 0) return 0;
-  const offset = (mod("bounceOffset") || 0) * 100;
-  const period = (mod("bouncePeriod") || 0) * 60;
-  if (period === -60) return 0;
-  const bounce = Math.abs(Math.sin((diff + 1 * offset) / (60 + period)));
+  // Match PathModifier.hx: plain offset/period, denom (90 + 90*period)
+  const offset = mod("bounceOffset") || 0;
+  const period = mod("bouncePeriod") || 0;
+  if (period === -1) return 0;
+  const bounce = Math.abs(Math.sin((diff + offset) / (90.0 + 90.0 * period)));
   return perc * HALF_SWAG * bounce;
 }
 
 function pathTornado(mod, data, diff){
-  // Schmovin-style tornado from PathModifier
+  // Schmovin-style tornado from PathModifier.hx (exact)
   const perc = mod("tornado");
   if (perc === 0) return 0;
   const playerColumn = data % 4;
+  const keyCunt = 3; // keyCount - 1 for 4-key
   const columnPhaseShift = playerColumn * Math.PI / 3 + (mod("tornadoOffset") || 0);
   const phaseShift = (diff / 135) * (1 + (mod("tornadoPeriod") || 0));
-  const returnReceptorToZeroOffsetX = (-Math.cos(-columnPhaseShift) + 1) / 2 * SWAG * 3;
-  const offsetX = (-Math.cos(phaseShift - columnPhaseShift) + 1) / 2 * SWAG * 3 - returnReceptorToZeroOffsetX;
+  const returnReceptorToZeroOffsetX = (-Math.cos(-columnPhaseShift) + 1) * HALF_SWAG * keyCunt;
+  const offsetX = (-Math.cos(phaseShift - columnPhaseShift) + 1) * HALF_SWAG * keyCunt - returnReceptorToZeroOffsetX;
   return offsetX * perc;
 }
 
@@ -2509,13 +2512,21 @@ function buildContinuousBody(func, mod, playerArg) {
 }
 
 /* ---------- Embedded EnhancedModchartTemplate.lua (for Vanilla Psych download) ---------- */
-const ENHANCED_MODCHART_TEMPLATE = `-- Enhanced Psych Lua Modchart Template (v2 - accurate to Troll Engine / Haxe)
+const ENHANCED_MODCHART_TEMPLATE = `-- Enhanced Psych Lua Modchart Template (v3 - corrected maths vs Troll Engine)
 -- Original by TheZoroForce240 (Simple Modchart Template)
--- Math ported from Troll Engine modifiers:
+-- Math ported/corrected from Troll Engine modifiers:
 --   DrunkModifier.hx, PathModifier.hx, BeatModifier.hx, ReverseModifier.hx,
 --   ConfusionModifier.hx, TransformModifier.hx, PerspectiveModifier.hx
 -- Compatible with the web Sequence Editor "Vanilla Psych" export
 -- (setModifierX/Y/Z + easeModifierX/Y/Z events)
+--
+-- v3 fixes (vs real Troll sources + editor JS):
+--   * Bumpy period: (period*24)+24  (was *16)
+--   * Bounce: plain offset/period, denom (90 + 90*period)
+--   * Tornado: halfWidth*(keyCount-1), + Offset/Period submods
+--   * TipsyZ alias (tipZ -> tipsyZ)
+--   * Beat: fractional-beat handling + Z axis support
+--   * Zigzag/Square/Sawtooth/Drunk/Tipsy aligned to Haxe
 
 local modchart = true
 
@@ -2653,9 +2664,10 @@ function runModifiers(data, curPos)
 			speed  = getModOnly('tipsySpeed', 'x')
 			offset = getModOnly('tipsyOffset', 'x')
 		elseif axis == 'Z' then
-			perc = getMod('tipZ', outAxis or 'angle')
-			speed  = getModOnly('tipZSpeed', 'x')
-			offset = getModOnly('tipZOffset', 'x')
+			-- tipZ is an alias for tipsyZ (Troll Engine getAliases)
+			perc = getMod('tipsyZ', outAxis or 'angle') + getMod('tipZ', outAxis or 'angle')
+			speed  = getModOnly('tipsyZSpeed', 'x') + getModOnly('tipZSpeed', 'x')
+			offset = getModOnly('tipsyZOffset', 'x') + getModOnly('tipZOffset', 'x')
 		else
 			perc = getMod('tipsy' .. axis, outAxis or 'x')
 			speed  = getModOnly('tipsy' .. axis .. 'Speed', 'x')
@@ -2672,7 +2684,7 @@ function runModifiers(data, curPos)
 
 	-- ============================================
 	-- BUMPY (DrunkModifier.hx - exact)
-	-- angle = (visualDiff + 100*offset) / ((period*16)+16)
+	-- angle = (visualDiff + 100*offset) / ((period*24)+24)
 	-- return perc * 40 * sin(angle)
 	-- ============================================
 	local function applyBumpy(axis, outAxis)
@@ -2687,8 +2699,8 @@ function runModifiers(data, curPos)
 			period = getModOnly('bumpy' .. axis .. 'Period', 'x')
 			offset = getModOnly('bumpy' .. axis .. 'Offset', 'x')
 		end
-		if perc == 0 then return 0 end
-		local ang = (curPos + (100 * offset)) / ((period * 16) + 16)
+		if perc == 0 or period == -1 then return 0 end
+		local ang = (curPos + (100 * offset)) / ((period * 24) + 24)
 		return perc * 40 * math.sin(ang)
 	end
 
@@ -2697,15 +2709,28 @@ function runModifiers(data, curPos)
 	zOffset = zOffset + applyBumpy('', 'y')
 
 	-- ============================================
-	-- TORNADO (PathModifier.hx / Schmovin)
+	-- TORNADO (PathModifier.hx / Schmovin - exact)
+	-- uses halfWidth * (keyCount-1), + Offset/Period
 	-- ============================================
 	local tornado = getMod('tornado', 'x')
 	if tornado ~= 0 then
-		local columnPhase = playerColumn * math.pi / 3
-		local phase = curPos / 135
-		local returnOffset = (-math.cos(-columnPhase) + 1) / 2 * arrowSize * 3
-		local offsetX = (-math.cos(phase - columnPhase) + 1) / 2 * arrowSize * 3 - returnOffset
+		local keyCunt = keyCount - 1
+		local columnPhase = (playerColumn * (math.pi / 3)) + (getModOnly('tornadoOffset', 'x') or 0)
+		local phase = (curPos / 135) * (1 + (getModOnly('tornadoPeriod', 'x') or 0))
+		local returnOffset = (-math.cos(-columnPhase) + 1) * halfWidth * keyCunt
+		local offsetX = (-math.cos(phase - columnPhase) + 1) * halfWidth * keyCunt - returnOffset
 		xOffset = xOffset + offsetX * tornado
+	end
+
+	-- Tornado Z variant
+	local tornadoZ = getModOnly('tornadoZ', 'x')
+	if tornadoZ ~= 0 then
+		local keyCunt = keyCount - 1
+		local columnPhase = (playerColumn * (math.pi / 3)) + (getModOnly('tornadoZOffset', 'x') or 0)
+		local phase = (curPos / 135) * (1 + (getModOnly('tornadoZPeriod', 'x') or 0))
+		local returnOffset = (-math.sin(-columnPhase) + 1) * halfWidth * keyCunt
+		local offsetZ = (-math.sin(phase - columnPhase) + 1) * halfWidth * keyCunt - returnOffset
+		zOffset = zOffset + offsetZ * tornadoZ
 	end
 
 	-- ============================================
@@ -2713,10 +2738,19 @@ function runModifiers(data, curPos)
 	-- ============================================
 	local zigzag = getMod('zigzag', 'x')
 	if zigzag ~= 0 then
-		local period = getModOnly('zigzagPeriod', 'x')
-		local offset = getModOnly('zigzagOffset', 'x')
+		local period = getModOnly('zigzagPeriod', 'x') or 0
+		local offset = getModOnly('zigzagOffset', 'x') or 0
 		local result = triangle(math.pi * (1 / (period + 1)) * ((curPos + (100 * offset)) / arrowSize))
 		xOffset = xOffset + (zigzag * halfWidth) * result
+	end
+
+	-- Zigzag Z
+	local zigzagZ = getModOnly('zigzagZ', 'x')
+	if zigzagZ ~= 0 then
+		local period = getModOnly('zigzagZPeriod', 'x') or 0
+		local offset = getModOnly('zigzagZOffset', 'x') or 0
+		local result = triangle(math.pi * (1 / (period + 1)) * ((curPos + (100 * offset)) / arrowSize))
+		zOffset = zOffset + (zigzagZ * halfWidth) * result
 	end
 
 	-- ============================================
@@ -2724,21 +2758,35 @@ function runModifiers(data, curPos)
 	-- ============================================
 	local square = getMod('square', 'x')
 	if square ~= 0 then
-		local period = getModOnly('squarePeriod', 'x')
-		local offset = getModOnly('squareOffset', 'x')
+		local period = getModOnly('squarePeriod', 'x') or 0
+		local offset = getModOnly('squareOffset', 'x') or 0
 		local cum = math.pi * (curPos + offset) / (arrowSize + (period * arrowSize))
 		xOffset = xOffset + square * halfWidth * squareWave(cum)
 	end
 
 	-- ============================================
-	-- BOUNCE (PathModifier.hx)
+	-- BOUNCE (PathModifier.hx - exact)
+	-- bounce = abs(sin((diff + offset) / (90 + 90*period)))
 	-- ============================================
 	local bounce = getMod('bounce', 'x')
 	if bounce ~= 0 then
-		local offset = (getModOnly('bounceOffset', 'x') or 0) * 100
-		local period = (getModOnly('bouncePeriod', 'x') or 0) * 60
-		local b = math.abs(math.sin((curPos + offset) / (60 + period)))
-		xOffset = xOffset + bounce * halfWidth * b
+		local offset = getModOnly('bounceOffset', 'x') or 0
+		local period = getModOnly('bouncePeriod', 'x') or 0
+		if period ~= -1 then
+			local b = math.abs(math.sin((curPos + offset) / (90 + 90 * period)))
+			xOffset = xOffset + bounce * halfWidth * b
+		end
+	end
+
+	-- Bounce Z
+	local bounceZ = getModOnly('bounceZ', 'x')
+	if bounceZ ~= 0 then
+		local offset = getModOnly('bounceZOffset', 'x') or 0
+		local period = getModOnly('bounceZPeriod', 'x') or 0
+		if period ~= -1 then
+			local b = math.abs(math.sin((curPos + offset) / (90 + 90 * period)))
+			zOffset = zOffset + bounceZ * halfWidth * b
+		end
 	end
 
 	-- ============================================
@@ -2760,7 +2808,7 @@ function runModifiers(data, curPos)
 	end
 
 	-- ============================================
-	-- BEAT (BeatModifier.hx - accel/decel envelope)
+	-- BEAT (BeatModifier.hx - accel/decel envelope, exact fractional)
 	-- ============================================
 	local function beatAmount(offset, mult)
 		local accelTime = 0.2
@@ -2768,6 +2816,9 @@ function runModifiers(data, curPos)
 		local b = (beat + accelTime + offset) * (mult + 1)
 		local evenBeat = (math.floor(b) % 2) ~= 0
 		if b < 0 then return 0 end
+		-- Match Haxe: beat -= floor(beat); beat += 1; beat -= floor(beat);
+		b = b - math.floor(b)
+		b = b + 1
 		b = b - math.floor(b)
 		if b >= totalTime then return 0 end
 		local amount = 0
@@ -2784,15 +2835,21 @@ function runModifiers(data, curPos)
 
 	local beatX = getMod('beat', 'x')
 	if beatX ~= 0 then
-		local period = getModOnly('beatPeriod', 'x')
-		local factor = beatAmount(getModOnly('beatOffset', 'x'), getModOnly('beatMult', 'x'))
+		local period = getModOnly('beatPeriod', 'x') or 0
+		local factor = beatAmount(getModOnly('beatOffset', 'x') or 0, getModOnly('beatMult', 'x') or 0)
 		xOffset = xOffset + beatX * (factor * math.sin((curPos / ((period * 30) + 30)) + math.pi / 2))
 	end
 	local beatY = getMod('beatY', 'y')
 	if beatY ~= 0 then
-		local period = getModOnly('beatYPeriod', 'x')
-		local factor = beatAmount(getModOnly('beatYOffset', 'x'), getModOnly('beatYMult', 'x'))
+		local period = getModOnly('beatYPeriod', 'x') or 0
+		local factor = beatAmount(getModOnly('beatYOffset', 'x') or 0, getModOnly('beatYMult', 'x') or 0)
 		yOffset = yOffset + beatY * (factor * math.sin((curPos / ((period * 30) + 30)) + math.pi / 2))
+	end
+	local beatZ = getModOnly('beatZ', 'x')
+	if beatZ ~= 0 then
+		local period = getModOnly('beatZPeriod', 'x') or 0
+		local factor = beatAmount(getModOnly('beatZOffset', 'x') or 0, getModOnly('beatZMult', 'x') or 0)
+		zOffset = zOffset + beatZ * (factor * math.sin((curPos / ((period * 30) + 30)) + math.pi / 2))
 	end
 
 	-- ============================================
@@ -2880,11 +2937,19 @@ function onCreatePost()
 	makeLuaSprite('tipsyPeriod', '', 0, 0)
 
 	makeLuaSprite('tornado', '', 0, 0)
+	makeLuaSprite('tornadoOffset', '', 0, 0)
+	makeLuaSprite('tornadoPeriod', '', 0, 0)
+	makeLuaSprite('tornadoZ', '', 0, 0)
+	makeLuaSprite('tornadoZOffset', '', 0, 0)
+	makeLuaSprite('tornadoZPeriod', '', 0, 0)
 	makeLuaSprite('sine', '', 0, 0)
 	makeLuaSprite('square', '', 0, 0)
 	makeLuaSprite('zigzag', '', 0, 0)
 	makeLuaSprite('zigzagPeriod', '', 0, 0)
 	makeLuaSprite('zigzagOffset', '', 0, 0)
+	makeLuaSprite('zigzagZ', '', 0, 0)
+	makeLuaSprite('zigzagZPeriod', '', 0, 0)
+	makeLuaSprite('zigzagZOffset', '', 0, 0)
 	makeLuaSprite('squarePeriod', '', 0, 0)
 	makeLuaSprite('squareOffset', '', 0, 0)
 	makeLuaSprite('sawtooth', '', 0, 0)
@@ -2892,15 +2957,29 @@ function onCreatePost()
 	makeLuaSprite('bounce', '', 0, 0)
 	makeLuaSprite('bounceOffset', '', 0, 0)
 	makeLuaSprite('bouncePeriod', '', 0, 0)
+	makeLuaSprite('bounceZ', '', 0, 0)
+	makeLuaSprite('bounceZOffset', '', 0, 0)
+	makeLuaSprite('bounceZPeriod', '', 0, 0)
 	makeLuaSprite('beat', '', 0, 0)
 	makeLuaSprite('beatY', '', 0, 0)
+	makeLuaSprite('beatZ', '', 0, 0)
 	makeLuaSprite('beatOffset', '', 0, 0)
 	makeLuaSprite('beatPeriod', '', 0, 0)
 	makeLuaSprite('beatMult', '', 0, 0)
 	makeLuaSprite('beatYOffset', '', 0, 0)
 	makeLuaSprite('beatYPeriod', '', 0, 0)
 	makeLuaSprite('beatYMult', '', 0, 0)
+	makeLuaSprite('beatZOffset', '', 0, 0)
+	makeLuaSprite('beatZPeriod', '', 0, 0)
+	makeLuaSprite('beatZMult', '', 0, 0)
 	makeLuaSprite('spiral', '', 0, 0)
+	-- TipsyZ + tipZ alias sprites
+	makeLuaSprite('tipsyZ', '', 0, 0)
+	makeLuaSprite('tipsyZSpeed', '', 0, 0)
+	makeLuaSprite('tipsyZOffset', '', 0, 0)
+	makeLuaSprite('tipZ', '', 0, 0)
+	makeLuaSprite('tipZSpeed', '', 0, 0)
+	makeLuaSprite('tipZOffset', '', 0, 0)
 
 	makeLuaSprite('scale', '', 0.7, 0.7)
 	makeLuaSprite('confusion', '', 0, 0)
@@ -3587,10 +3666,11 @@ function exportVanillaPsychLua(){
   lua += `-- Generated by faithful Modchart Editor\n`;
   lua += `--\n`;
   lua += `-- REQUIREMENTS:\n`;
-  lua += `--   1. Place EnhancedModchartTemplate.lua in the same scripts/ folder\n`;
-  lua += `--      (or install FNF-Modcharting-Tools which provides equivalent runtime).\n`;
-  lua += `--   2. Load the template BEFORE this sequence (Psych loads all .lua in scripts/).\n`;
-  lua += `--   3. The template exposes setModifierX/Y/Z and easeModifierX/Y/Z events.\n\n`;
+  lua += `--   1. You MUST also have EnhancedModchartTemplate.lua in scripts/\n`;
+  lua += `--      (downloaded together with this file from the Vanilla Psych export).\n`;
+  lua += `--   2. Psych loads all .lua in scripts/ — template provides runModifiers.\n`;
+  lua += `--   3. Events used: setModifierX/Y/Z and easeModifierX/Y/Z.\n`;
+  lua += `--   Without the template, this sequence does nothing.\n\n`;
 
   lua += `local function secFromSteps(steps)\n`;
   lua += `    return steps * (${stepCrochetSec})\n`;
@@ -4991,14 +5071,39 @@ function wireInspector(){
   if(dom.engineBtnPsych){
     dom.engineBtnPsych.addEventListener('click', ()=>{
       const seq = exportVanillaPsychLua();
-      downloadFile(state.songName+'_psych_sequence.lua', seq, 'text/x-lua');
-      // Also download the required template so the user has everything needed
-      if(typeof ENHANCED_MODCHART_TEMPLATE === 'string' && ENHANCED_MODCHART_TEMPLATE.length > 100){
-        setTimeout(()=>{
-          downloadFile('EnhancedModchartTemplate.lua', ENHANCED_MODCHART_TEMPLATE, 'text/x-lua');
-        }, 350);
+      const hasTemplate = (typeof ENHANCED_MODCHART_TEMPLATE === 'string' && ENHANCED_MODCHART_TEMPLATE.length > 100);
+
+      // Download the runtime template FIRST (required). Browsers often block the
+      // second file from a delayed setTimeout; do both as direct user-gesture downloads.
+      if(hasTemplate){
+        downloadFile('EnhancedModchartTemplate.lua', ENHANCED_MODCHART_TEMPLATE, 'text/x-lua');
       }
-      flashStatus('Exported Vanilla Psych sequence + template');
+      // Sequence script (events that drive the template)
+      downloadFile(state.songName + '_psych_sequence.lua', seq, 'text/x-lua');
+
+      // Fallback: if multi-download is blocked, also offer a single combined file
+      if(hasTemplate){
+        const combined =
+          '-- ============================================================\n' +
+          '-- COMBINED Vanilla Psych package (template + sequence)\n' +
+          '-- Split into two files if your engine expects separate scripts:\n' +
+          '--   1) EnhancedModchartTemplate.lua  (everything until END TEMPLATE)\n' +
+          '--   2) *_psych_sequence.lua          (from BEGIN SEQUENCE onward)\n' +
+          '-- ============================================================\n\n' +
+          '-- ========== BEGIN TEMPLATE: EnhancedModchartTemplate.lua ==========\n' +
+          ENHANCED_MODCHART_TEMPLATE + '\n' +
+          '-- ========== END TEMPLATE ==========\n\n' +
+          '-- ========== BEGIN SEQUENCE ==========\n' +
+          seq + '\n' +
+          '-- ========== END SEQUENCE ==========\n';
+        setTimeout(()=>{
+          downloadFile(state.songName + '_psych_FULL_package.lua', combined, 'text/x-lua');
+        }, 400);
+      }
+
+      flashStatus(hasTemplate
+        ? 'Exported template + sequence (+ combined package)'
+        : 'Exported sequence (template missing from editor build!)');
       hideEngineModal();
     });
   }
