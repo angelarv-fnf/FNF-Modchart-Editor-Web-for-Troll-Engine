@@ -405,7 +405,7 @@ main {
       <label class="check"><input id="chk-show-chart" type="checkbox" checked> Show falling notes</label>
       <label class="check"><input id="chk-show-guides" type="checkbox" checked> Lane guide lines</label>
       <label class="check"><input id="chk-use-sprites" type="checkbox" checked> Use real note sprites</label>
-      <label>Scroll speed <input id="inp-chart-speed" type="number" step="0.05" min="0.1" value="1"></label>
+      <label>Song speed (Troll songSpeed) <input id="inp-chart-speed" type="number" step="0.05" min="0.1" value="1" title="Must match the chart songSpeed or notes travel a different distance than in-game"></label>
       <div id="chart-info" style="color:var(--muted);font-size:11px;margin-top:6px;line-height:1.4">No chart loaded</div>
       <button id="btn-clear-chart" class="danger" style="margin-top:8px">Clear Chart</button>
     </section>
@@ -424,14 +424,15 @@ main {
     <section class="panel">
       <h2>Keyframes <span id="kf-count"></span></h2>
       <label>Value <input id="inp-value" type="number" step="any"></label>
+      <p class="hint" id="kf-value-hint" style="opacity:.7;font-size:12px;margin:4px 0 8px">Troll Normal API: 1 = 100% (drunk/reverse/alpha…). transform* = pixels. rotate* = degrees.</p>
       <label>Mode <select id="sel-kf-mode">
         <option value="both">Set + Ease</option>
         <option value="set">Set Only</option>
         <option value="ease">Ease Only</option>
       </select></label>
       <label>API <select id="sel-kf-api">
-        <option value="normal">Normal (queueSet)</option>
-        <option value="percent">Percentage (queueSetP)</option>
+        <option value="normal">Normal (queueSet) — 1 = 100%</option>
+        <option value="percent">Percentage (queueSetP) — 100 = 100%</option>
       </select></label>
       <label>Ease <select id="sel-ease"></select></label>
       <label>Duration <input id="inp-duration" type="number" step="any" min="0"></label>
@@ -607,7 +608,12 @@ const TRACK_H = 28;
 const KEY = 12;
 const HEADER_W = 220;
 const RULER_H = 22;
-const SWAG = 112;
+// Troll 0.1, 0.2.0-beta.1–.6, 0.3.0, 0.3.1, 0.3.2, 0.3.2h:
+//   Note.swagWidth = 160 * 0.7;  Note.halfWidth = swagWidth * 0.5;
+// Do not use the unscaled 160 — that overstates every SWAG-based offset.
+const TROLL_SPRITE_SCALE = 0.7;
+const SWAG = 160 * TROLL_SPRITE_SCALE; // 112
+const HALF_SWAG = SWAG * 0.5;          // 56  (drunk / zigzag / tornado / bounce)
 
 const quantizations = [4, 8, 12, 16, 20, 24, 32, 48, 64, 96, 192];
 const zoomList = [0.25, 0.5, 1, 2, 3, 4, 6, 8, 12, 16, 24];
@@ -719,12 +725,12 @@ const modifierList = [
 
   // === Reverse family (ReverseModifier) ===
   "reverse","reverse0","reverse1","reverse2","reverse3","unboundedReverse",
-  "split","alternate","cross","receptorscroll",
+  "split","alternate","cross","receptorScroll",
 
   // === Flip / invert / centered / scale (ScaleModifier, SwapModifier) ===
   "flip","invert","centered","opponentSwap",
-  "mini","tiny","tinyx","tinyy","tiny0","tiny1","tiny2","tiny3",
-  "squish","stretch","miniX","miniY",
+  "tiny","tinyx","tinyy","tiny0","tiny1","tiny2","tiny3",
+  "squish","stretch",
   "scale","scaleX","scaleY",
   "scale0","scale1","scale2","scale3",
   "scale0X","scale1X","scale2X","scale3X",
@@ -764,6 +770,8 @@ const modifierList = [
   "flash2R","flash2G","flash2B","flash3R","flash3G","flash3B",
 
   // === Perspective / zoom / skew / snap ===
+  // "mini" = ZoomModifier field zoom (zoom -= 0.5 * value), NOT sprite scale
+  "mini",
   "fieldYaw","fieldPitch","fieldRoll","fieldX","fieldY","fieldZ",
   "zoom","camZoom","hudCamZoom","gameCamZoom","hudCamAngle","gameCamAngle",
   "camgameoverride","camgameoverridex","camgameoverridey","camgamezoom",
@@ -776,7 +784,49 @@ const modifierList = [
   "kadeWave","hudShake","blackScreen",
 
   // === Schmovin / optional ===
-  "schmovinDrunk","schmovinTipsy","schmovinBumpy"
+  "schmovinDrunk","schmovinTipsy","schmovinBumpy",
+
+  // === Troll 0.3.0 names the preview now simulates ===
+  "wavePeriod","xmode",
+  "zigzagZ","zigzagZOffset","zigzagZPeriod",
+  "bounceZ","bounceZOffset","bounceZPeriod",
+  "digital","digitalSteps","digitalOffset","digitalPeriod",
+  "digitalZ","digitalZSteps","digitalZOffset","digitalZPeriod",
+  "tornadoZ","tornadoZOffset","tornadoZPeriod",
+  "tornadoTan","tornadoTanOffset","tornadoTanPeriod",
+  "tornadoTanZ","tornadoTanZOffset","tornadoTanZPeriod",
+  "itgTornado","itgTornadoOffset","itgTornadoPeriod",
+  "itgTornadoTan","itgTornadoTanOffset","itgTornadoTanPeriod",
+  "spiralX","spiralY","spiralZ",
+  "spiralXOffset","spiralXPeriod","spiralYOffset","spiralYPeriod","spiralZOffset","spiralZPeriod",
+  "schmovinSpiralX","schmovinSpiralY","schmovinSpiralZ",
+  "schmovinSpiralXSpeed","schmovinSpiralYSpeed","schmovinSpiralZSpeed",
+  "schmovinSpiralXOffset","schmovinSpiralYOffset","schmovinSpiralZOffset",
+  "schmovinSpiralXSpacing","schmovinSpiralYSpacing","schmovinSpiralZSpacing",
+  "moveX","moveY","moveZ","move0X","move0Y","move0Z","move1X","move1Y","move1Z",
+  "move2X","move2Y","move2Z","move3X","move3Y","move3Z",
+  "incomingAngleX","incomingAngleY","incomingAngleZ",
+  "incomingAngleX0","incomingAngleY0","incomingAngleZ0",
+  "incomingAngleX1","incomingAngleY1","incomingAngleZ1",
+  "incomingAngleX2","incomingAngleY2","incomingAngleZ2",
+  "incomingAngleX3","incomingAngleY3","incomingAngleZ3",
+  "vanish","roll","twirl","dizzy",
+  "noteAngle","noteAngleX","noteAngleY",
+  "receptorAngle","receptorAngleX","receptorAngleY",
+  "wiggleHolds","wiggleSpeed",
+  "legacyZAxis","infinite",
+  "schmovinDrunkY","schmovinDrunkZ","schmovinDrunkOffset","schmovinDrunkPeriod","schmovinDrunkSpeed",
+  "schmovinTipsyX","schmovinTipsyZ","schmovinTipsyOffset","schmovinTipsySpeed",
+  "schmovinBumpyX","schmovinBumpyY","schmovinBumpyOffset","schmovinBumpyPeriod",
+  "local0rotateX","local0rotateY","local0rotateZ",
+  "local1rotateX","local1rotateY","local1rotateZ",
+  "local2rotateX","local2rotateY","local2rotateZ",
+  "local3rotateX","local3rotateY","local3rotateZ",
+  "0rotateX","0rotateY","0rotateZ",
+  "1rotateX","1rotateY","1rotateZ",
+  "2rotateX","2rotateY","2rotateZ",
+  "3rotateX","3rotateY","3rotateZ",
+  "noteSkewX","noteSkewY"
 ];
 
 const easeList = [
@@ -847,11 +897,23 @@ function ease(name,t){ const f=eases[name]; return f?f(t):t; }
 
 /* ---------- mod name aliases (Schmovin / Troll compatibility) ---------- */
 const modAliases = {
-  // do NOT alias x/y/z or rotate* (Lua writes both names; summing both doubles motion)
+  // Case / naming bridges only. Do not alias distinct Troll mods into each other.
   confusionzoffset: "confusionOffset",
-  wiggle: "zigzag",
-  tinyx: "tiny", tinyy: "tiny",
-  camgamezoom: "gameCamZoom"
+  tinyx: "tinyX",
+  tinyy: "tinyY",
+  rotatex: "rotateX",
+  rotatey: "rotateY",
+  rotatez: "rotateZ",
+  tipZ: "tipsyZ",
+  tipZSpeed: "tipsyZSpeed",
+  tipZOffset: "tipsyZOffset",
+  randomVanish: "vanish",
+  camgamezoom: "gameCamZoom",
+  // Troll 0.2.0-beta.1–.5 class name is receptorScroll (removed in beta.6 / 0.3)
+  receptorscroll: "receptorScroll",
+  // Old editor: wiggle was PathModifier zigzag. Applying both doubles
+  // falling-note X while receptors (visualDiff=0) look fine.
+  wiggle: "zigzag"
 };
 function resolveAlias(name){
   return modAliases[name] || name;
@@ -879,7 +941,8 @@ function buildModIndex(tracks){
   };
   for(const t of tracks){
     if(!t.visible) continue;
-    const modName = resolveModName(t.modifier, t.target);
+    const base = resolveAlias(t.modifier);
+    const modName = resolveModName(base, t.target);
     for(const p of targetPlayers(t.target)){
       for(const kf of t.keyframes) add(modName, p, kf);
     }
@@ -928,8 +991,14 @@ function modValue(modName, player, step, idx, tracks){
       if(k.step > step) break;
       const mode = k.mode || 'both';
       // Percent API (queueSetP): stored value is 0–100 style; engine uses value/100
+      // Troll Normal API: 1 = 100% on drunk/tipsy/reverse/…
+      // Many real charts still write 50/100 meaning 50%/100%. That looks fine in
+      // Troll if the script used setPercent/queueSetP, but the editor preview
+      // would treat 100 as 100× strength. Auto-fold those back to 0–1.
       let val = Number(k.value) || 0;
-      if ((k.api || 'normal') === 'percent') val = val / 100;
+      const api = k.api || 'normal';
+      if (api === 'percent') val = val / 100;
+      else if (isPercentStyleMod(modName) && Math.abs(val) >= 8) val = val / 100;
       const dur = k.duration || 0;
 
       if(mode === 'set'){
@@ -976,11 +1045,45 @@ function modValue(modName, player, step, idx, tracks){
 }
 
 /* ---------- individual modifier helpers ---------- */
-/* ---------- high-fidelity modifier math (closer to real Haxe sources) ---------- */
-const HALF_SWAG = SWAG * 0.5;
+/* ---------- high-fidelity modifier math (ported from Troll Engine 0.3.0 Haxe) ---------- */
+const PI_THIRD = Math.PI / 3;
+const TO_RAD = Math.PI / 180;
+
+function rotateV3(x, y, z, rx, ry, rz){
+  // VectorHelpers.rotateV3: X then Y then Z
+  let cy = Math.cos(rx), sy = Math.sin(rx);
+  let y1 = y * cy - z * sy, z1 = y * sy + z * cy;
+  y = y1; z = z1;
+  let cx = Math.cos(ry), sx = Math.sin(ry);
+  let x1 = x * cx + z * sx, z2 = -x * sx + z * cx;
+  x = x1; z = z2;
+  let cz = Math.cos(rz), sz = Math.sin(rz);
+  return {x: x * cz - y * sz, y: x * sz + y * cz, z: z2};
+}
+
+function coolSnap(v, interval){
+  if (!interval) return v;
+  return Math.round(v / interval) * interval;
+}
+
+function cTriangle(angle){
+  // CoolMath.triangle
+  let p = angle / Math.PI;
+  p = p - 2 * Math.floor(p / 2);
+  if (p < 0) p += 2;
+  return p < 1 ? (2 * p - 1) : (3 - 2 * p);
+}
+
+function cSquare(angle){
+  // CoolMath.square — sign of sin
+  const s = Math.sin(angle);
+  return s >= 0 ? 1 : -1;
+}
+
+function def1(v){ return v === 0 ? 1 : v; }
 
 function beatPulse(beat, offset, mult){
-  // Faithful to BeatModifier.hx
+  // BeatModifier.updateBeat
   const accel = 0.2, total = 0.5;
   let b = (beat + accel + (offset || 0)) * ((mult || 0) + 1);
   const even = Math.floor(b) % 2 !== 0;
@@ -999,134 +1102,101 @@ function beatPulse(beat, offset, mult){
   return 40 * amount;
 }
 
-function drunk(mod, data, timeSec, visualDiff, axis){
-  // Closer to DrunkModifier / SchmovinDrunkModifier
-  const perc = axis === "" ? mod("drunk") : mod("drunk" + axis);
-  if (perc === 0) return 0;
-  const speed  = mod(axis === "" ? "drunkSpeed"  : "drunk" + axis + "Speed");
-  const period = mod(axis === "" ? "drunkPeriod" : "drunk" + axis + "Period");
-  const offset = mod(axis === "" ? "drunkOffset" : "drunk" + axis + "Offset");
-  const angle = timeSec * (1 + speed) + data * (offset * 0.2 + 0.2) + visualDiff * ((period * 10) + 10) / 720;
-  return perc * (Math.cos(angle) * HALF_SWAG);
+function drunkAdjust(axis, val, legacyZ){
+  if (legacyZ && (axis.indexOf('Z') === 0 || axis.indexOf('TanZ') === 0)) return val / 1280;
+  return val;
 }
 
-function tipsy(mod, data, timeSec, axis){
-  // Closer to real tipsy (DrunkModifier)
-  // Per-lane: tipsyZ0..tipsyZ3 share the same math as tipsyZ
-  const key = axis === "Z" ? "tipsyZ" : (axis === "X" ? "tipsyX" : "tipsy");
-  let perc = mod(key) || (axis === "" ? mod("tipsy") : 0);
-  if (axis === "Z") perc += mod("tipsyZ" + data) || 0;
+function applyDrunk(mod, axis, time, visualDiff, data, mathFunc, legacyZ){
+  mathFunc = mathFunc || Math.cos;
+  const perc = axis === '' ? mod('drunk') : mod('drunk' + axis);
   if (perc === 0) return 0;
-  const speed  = mod(key + "Speed")  || mod("tipsySpeed");
-  const offset = mod(key + "Offset") || mod("tipsyOffset");
-  const angle = timeSec * (speed * 1.2 + 1.2) + data * (offset * 1.8 + 1.8);
-  return perc * (Math.cos(angle) * SWAG * 0.4);
+  const speed = mod('drunk' + axis + 'Speed');
+  const period = mod('drunk' + axis + 'Period');
+  const offset = mod('drunk' + axis + 'Offset');
+  const angle = time * (1 + speed) + data * ((offset * 0.2) + 0.2) + visualDiff * ((period * 10) + 10) / 720;
+  return drunkAdjust(axis, perc * (mathFunc(angle) * HALF_SWAG), legacyZ);
 }
 
-function bumpy(mod, data, visualDiff, axis){
-  const key = axis === "" ? "bumpy" : "bumpy" + axis;
-  const perc = mod(key);
+function applyTipsy(mod, axis, time, visualDiff, data, mathFunc, legacyZ){
+  mathFunc = mathFunc || Math.cos;
+  const perc = mod('tipsy' + axis);
   if (perc === 0) return 0;
-  const period = mod(key + "Period") || mod("bumpyPeriod");
-  const offset = mod(key + "Offset") || 0;
-  if (period === -1) return 0;
-  // Match current Troll DrunkModifier.hx: (period*24)+24
-  const angle = (visualDiff + 100.0 * offset) / ((period * 24.0) + 24.0);
-  return perc * 40 * Math.sin(angle);
+  const speed = mod('tipsy' + axis + 'Speed');
+  const offset = mod('tipsy' + axis + 'Offset');
+  const angle = time * ((speed * 1.2) + 1.2) + data * ((offset * 1.8) + 1.8);
+  return drunkAdjust(axis, perc * (mathFunc(angle) * SWAG * 0.4), legacyZ);
+}
+
+function applyBumpy(mod, axis, time, visualDiff, data, mathFunc, legacyZ){
+  mathFunc = mathFunc || Math.sin;
+  const perc = mod('bumpy' + axis);
+  const period = mod('bumpy' + axis + 'Period');
+  if (perc === 0 || period === -1) return 0;
+  const offset = mod('bumpy' + axis + 'Offset');
+  const angle = (visualDiff + (100.0 * offset)) / ((period * 24.0) + 24.0);
+  return drunkAdjust(axis, perc * 40 * mathFunc(angle), legacyZ);
+}
+
+function applySchmovinDrunk(mod, axis, beat, visualDiff, column, mathFunc, legacyZ){
+  mathFunc = mathFunc || Math.sin;
+  const prefix = 'schmovinDrunk' + axis;
+  const perc = axis === '' ? mod('schmovinDrunk') : mod(prefix);
+  if (perc === 0) return 0;
+  const offset = mod(prefix + 'Offset');
+  const period = 1 + mod(prefix + 'Period');
+  const speed = 1 + mod(prefix + 'Speed');
+  const phaseShift = (column * 0.5) + offset + (visualDiff * period) / 222 * Math.PI;
+  return drunkAdjust(axis, mathFunc((beat * speed) / 4 * Math.PI + phaseShift) * HALF_SWAG * perc, legacyZ);
+}
+
+function applySchmovinTipsy(mod, axis, beat, visualDiff, column, mathFunc, legacyZ){
+  mathFunc = mathFunc || Math.sin;
+  const prefix = 'schmovinTipsy' + axis;
+  const perc = mod(prefix);
+  if (perc === 0) return 0;
+  const offset = mod(prefix + 'Offset');
+  const speed = 1 + mod(prefix + 'Speed');
+  return drunkAdjust(axis, mathFunc((beat * speed) / 4 * Math.PI + column + offset) * HALF_SWAG * perc, legacyZ);
+}
+
+function applySchmovinBumpy(mod, axis, beat, visualDiff, mathFunc, legacyZ){
+  mathFunc = mathFunc || Math.sin;
+  const prefix = 'schmovinBumpy' + axis;
+  const perc = mod(prefix);
+  if (perc === 0) return 0;
+  const offset = mod(prefix + 'Offset');
+  const period = 1 + mod(prefix + 'Period');
+  return drunkAdjust(axis, mathFunc(visualDiff / (300 + 300 * period) * Math.PI * 2 + offset) * 40 * perc, legacyZ);
+}
+
+function getDigitalAngle(yOffset, offset, period){
+  return Math.PI * (yOffset + offset) / (SWAG + (period * SWAG));
 }
 
 function getReverseValue(mod, data){
-  // Closer to ReverseModifier.hx
   const kNum = 4;
   let val = 0;
-  if (data >= kNum / 2) val += mod("split");
-  if ((data % 2) === 1) val += mod("alternate");
-  const first = kNum / 4, last = kNum - 1 - first;
-  if (data >= first && data <= last) val += mod("cross");
-  val += mod("reverse") + mod("reverse" + data);
-  if (mod("unboundedReverse") === 0) {
+  if (data >= kNum / 2) val += mod('split');
+  if ((data % 2) === 1) val += mod('alternate');
+  const first = kNum * 0.25;
+  const last = kNum - 1 - first;
+  if (data >= first && data <= last) val += mod('cross');
+  val += mod('reverse') + mod('reverse' + data);
+  if (mod('unboundedReverse') === 0) {
     val %= 2;
     if (val > 1) val = 2 - val;
   }
   return val;
 }
 
-function pathZigzag(mod, data, diff){
-  // PathModifier triangle
-  const perc = mod("zigzag");
-  if (perc === 0) return 0;
-  const offset = mod("zigzagOffset") || 0;
-  const period = mod("zigzagPeriod") || 0;
-  let fAngle = (Math.PI * (1 / (period + 1)) * ((diff + 100 * offset) / SWAG)) % (Math.PI * 2);
-  if (fAngle < 0) fAngle += Math.PI * 2;
-  let result = fAngle * (1 / Math.PI);
-  if (result < 0.5) result = result * 2;
-  else if (result < 1.5) result = 1 - ((result - 0.5) * 2);
-  else result = -4 + result * 2;
-  return (perc * HALF_SWAG) * result;
-}
-
-function pathSawtooth(mod, data, diff){
-  const percent = mod("sawtooth");
-  if (percent === 0) return 0;
-  const period = (mod("sawtoothPeriod") || 0) + 1;
-  const p = (0.5 / period * diff) / SWAG;
-  return (percent * SWAG) * (p - Math.floor(p));
-}
-
-function pathSquare(mod, data, diff){
-  const perc = mod("square");
-  if (perc === 0) return 0;
-  const offset = mod("squareOffset") || 0;
-  const period = mod("squarePeriod") || 0;
-  const cum = (Math.PI * (diff + 1 * offset) / (SWAG + period * SWAG));
-  const fAngle = cum % (Math.PI * 2);
-  const fResult = fAngle >= Math.PI ? -1 : 1;
-  return perc * HALF_SWAG * fResult;
-}
-
-function pathBounce(mod, data, diff){
-  const perc = mod("bounce");
-  if (perc === 0) return 0;
-  // Match PathModifier.hx: plain offset/period, denom (90 + 90*period)
-  const offset = mod("bounceOffset") || 0;
-  const period = mod("bouncePeriod") || 0;
-  if (period === -1) return 0;
-  const bounce = Math.abs(Math.sin((diff + offset) / (90.0 + 90.0 * period)));
-  return perc * HALF_SWAG * bounce;
-}
-
-function pathTornado(mod, data, diff){
-  // Schmovin-style tornado from PathModifier.hx (exact)
-  const perc = mod("tornado");
-  if (perc === 0) return 0;
-  const playerColumn = data % 4;
-  const keyCunt = 3; // keyCount - 1 for 4-key
-  const columnPhaseShift = playerColumn * Math.PI / 3 + (mod("tornadoOffset") || 0);
-  const phaseShift = (diff / 135) * (1 + (mod("tornadoPeriod") || 0));
-  const returnReceptorToZeroOffsetX = (-Math.cos(-columnPhaseShift) + 1) * HALF_SWAG * keyCunt;
-  const offsetX = (-Math.cos(phaseShift - columnPhaseShift) + 1) * HALF_SWAG * keyCunt - returnReceptorToZeroOffsetX;
-  return offsetX * perc;
-}
-
-function pathWiggle(mod, data, diff){
-  // WiggleModifier approximation (visualDiff based)
-  const perc = mod("wiggle");
-  if (perc === 0) return 0;
-  const speed = mod("wiggleSpeed") || (Math.PI * 3);
-  return Math.sin((diff / 720) * speed) * (perc * 250);
+function baseReceptorX(player, data){
+  return player === 0 ? 158 + SWAG * data : 790 + SWAG * data;
 }
 
 function baseReceptorPos(player, data){
-  // Accurate to ModManager.getBaseX + Note.swagWidth/2 (visual center)
-  // Preview player 0 = opponent (engine modNumber 1, left)
-  // Preview player 1 = player/BF   (engine modNumber 0, right)
-  // Haxe getBaseX(player=1) + 56 → 158 + 112*data
-  // Haxe getBaseX(player=0) + 56 → 790 + 112*data
-  return {
-    x: player === 0 ? 158 + SWAG * data : 790 + SWAG * data,
-    y: 106   // matches (Note.swagWidth/2 + 50) default before reverse
-  };
+  // Matches original preview dock: halfWidth + 50 padding
+  return { x: baseReceptorX(player, data), y: HALF_SWAG + 50 };
 }
 
 function computePos(engine, player, data, beat, timeSec, visualDiff, isReceptor){
@@ -1134,216 +1204,474 @@ function computePos(engine, player, data, beat, timeSec, visualDiff, isReceptor)
   if (isReceptor === undefined || isReceptor === null) isReceptor = false;
   const step = beat * 4;
   const mod = (m) => modValue(m, player, step, engine.idx, engine.tracks);
+  const legacyZ = mod('legacyZAxis') > 0;
 
-  // Base X = Haxe ModManager.getBaseX + Note.swagWidth/2 (visual center)
-  // Preview player 0 = opponent (left), player 1 = BF (right)
-  const baseX = player === 0 ? 158 + SWAG * data : 790 + SWAG * data;
-  const half = SWAG * 0.5;
-  const topShift = 50;
-  const bottomShift = 570; // ≈ FlxG.height - 150
-  let x = baseX, angle = 0, scaleX = 1, scaleY = 1, alpha = 1;
+  // xmod / xmod{col} — aux scroll multipliers (unset 0 => 1)
+  let xm = def1(mod('xmod')) * def1(mod('xmod' + data));
+  visualDiff = visualDiff * xm;
 
-  // ---------- Scale / Tiny (ScaleModifier) ----------
-  const tiny = mod("tiny") + mod("tiny" + data);
-  const tinyX = mod("tinyX") + mod("tiny" + data + "X") + mod("miniX") + mod("mini" + data + "X");
-  const tinyY = mod("tinyY") + mod("tiny" + data + "Y") + mod("miniY") + mod("mini" + data + "Y");
-  const mini = mod("mini");
-  // mini applied once (ScaleModifier: scale *= 1 - mini)
-  scaleX *= Math.pow(0.5, tiny + tinyX) * (1 - mini);
-  scaleY *= Math.pow(0.5, tiny + tinyY) * (1 - mini);
-  const sq = mod("squish") + mod("squish" + data);
-  const st = mod("stretch") + mod("stretch" + data);
-  scaleX *= lerp(1, 2, sq); scaleY *= lerp(1, 0.5, sq);
-  scaleX *= lerp(1, 0.5, st); scaleY *= lerp(1, 2, st);
+  let x = baseReceptorX(player, data);
+  let y = 0;
+  let z = 0;
+  let angle = 0, scaleX = 1, scaleY = 1, alpha = 1, glow = 0;
+  let rsFade = 1; // ReceptorScrollModifier updateNote off-lap fade
 
-  // ---------- Reverse + Centered (ReverseModifier.hx) ----------
-  // upscrollY = half+shift+visualDiff; downscrollY = half+shift-visualDiff;
-  // pos.y = lerp(up, down, perc)  → partial reverse still linear in visDiff (correct),
-  // full reverse flips approach direction. Holds stay straight under pure reverse.
+  // ---------- ScaleModifier (PRE_REVERSE) name=tiny ----------
+  const tiny = mod('tiny') + mod('tiny' + data);
+  const tinyX = mod('tinyX') + mod('tiny' + data + 'X');
+  const tinyY = mod('tinyY') + mod('tiny' + data + 'Y');
+  scaleX *= Math.pow(0.5, tinyX) * Math.pow(0.5, tiny);
+  scaleY *= Math.pow(0.5, tinyY) * Math.pow(0.5, tiny);
+  scaleX *= def1(mod('scale')) * def1(mod('scale' + data)) * def1(mod('scaleX')) * def1(mod('scale' + data + 'X'));
+  scaleY *= def1(mod('scale')) * def1(mod('scale' + data)) * def1(mod('scaleY')) * def1(mod('scale' + data + 'Y'));
+  const stretch = mod('stretch') + mod('stretch' + data);
+  const squish = mod('squish') + mod('squish' + data);
+  const stretchX = lerp(1, 0.5, stretch), stretchY = lerp(1, 2, stretch);
+  const squishX = lerp(1, 2, squish), squishY = lerp(1, 0.5, squish);
+  // Troll uses angle=0 here, so this reduces to squishX / squishY
+  scaleX *= squishX * stretchX;
+  scaleY *= squishY * stretchY;
+
+  // ---------- ReverseModifier ----------
   const perc = getReverseValue(mod, data);
+  const half = HALF_SWAG;
+  const topShift = 50;
+  const bottomShift = 570;
+  // Troll: pos.y = lerp(half+pad, height-(half+pad), reverse) +/- visualDiff
   let shift = lerp(topShift, bottomShift, perc);
-  const centered = mod("centered");
+  const centered = mod('centered');
   if (centered !== 0) shift = lerp(shift, 360 - half, centered);
-  const upY = half + shift + visualDiff;
-  const downY = half + shift - visualDiff;
-  let y = lerp(upY, downY, perc);
-
-  const rs = mod("receptorscroll");
-  if (rs !== 0) y = lerp(y, 360, clamp(rs, 0, 1));
-
-  // ---------- Beat (visualDiff-aware) ----------
-  if (mod("beat") !== 0) {
-    x += mod("beat") * beatPulse(beat, mod("beatOffset"), mod("beatMult"))
-         * Math.sin((visualDiff / ((mod("beatPeriod") || 0) * 30 + 30)) + Math.PI / 2);
+  let distY = lerp(visualDiff, -visualDiff, perc);
+  let distX = 0, distZ = 0;
+  const iax = (mod('incomingAngleX') + mod('incomingAngleX' + data)) * TO_RAD;
+  const iay = (mod('incomingAngleY') + mod('incomingAngleY' + data)) * TO_RAD;
+  const iaz = (mod('incomingAngleZ') + mod('incomingAngleZ' + data)) * TO_RAD;
+  if (iax || iay || iaz) {
+    const r = rotateV3(0, distY, 0, iax, iay, iaz);
+    distX = r.x; distY = r.y; distZ = r.z;
   }
-  if (mod("beatY") !== 0) {
-    y += mod("beatY") * beatPulse(beat, mod("beatYOffset"), mod("beatYMult"))
-         * Math.sin((visualDiff / ((mod("beatYPeriod") || 0) * 30 + 30)) + Math.PI / 2);
-  }
-  if (mod("beatZ") !== 0) {
-    const bz = mod("beatZ") * beatPulse(beat, mod("beatZOffset"), mod("beatZMult"))
-         * Math.sin((visualDiff / ((mod("beatZPeriod") || 0) * 30 + 30)) + Math.PI / 2);
-    const s = 1 + bz * 0.004;
-    scaleX *= s; scaleY *= s;
+  y = half + shift + distY;
+  x += distX;
+  z += distZ;
+
+  // ReceptorScrollModifier (Troll 0.2.0-beta.1 through beta.5 ONLY)
+  // source/modchart/modifiers/ReceptorScrollModifier.hx
+  // Removed in 0.2.0-beta.6 and 0.3.0 — preview still simulates the 0.2 class.
+  // getPos: moveSpeed = Conductor.crochet * 3
+  //   timeDiff notes    = songPosition - strumTime
+  //   timeDiff receptors = 0
+  //   vDiff = -(timeDiff - songPosition) / moveSpeed
+  //   ping-pongs Y between 50 and (height-150 - halfSwag) over 3 beats
+  //   pos.y = lerp(startY, endY, value)
+  // updateNote: if floor(songPos/moveSpeed) != floor(strumTime/moveSpeed) alpha *= 0.5
+  {
+    const rs = mod('receptorScroll') || mod('receptorscroll');
+    if (rs !== 0) {
+      const crochet = (engine && engine.stepCrochet) ? engine.stepCrochet * 4 : (60000 / (state.bpm || 150));
+      const moveSpeed = crochet * 3;
+      const songPosMs = (timeSec || 0) * 1000;
+      const speed = Math.max(0.1, (state && state.chartSpeed) || 1);
+      const pxPerMs = 0.45 * speed;
+      // Reconstruct Troll timeDiff from preview visualDiff
+      const tDiff = isReceptor ? 0 : -(visualDiff / pxPerMs);
+      const vDiff = -(tDiff - songPosMs) / moveSpeed;
+      const cycleFloor = Math.floor(vDiff);
+      let frac = vDiff - cycleFloor; // 0..1
+      if (frac < 0) frac += 1;
+      const reversed = (cycleFloor % 2 === 0);
+      const revPerc = reversed ? (1 - frac) : frac;
+      const upscrollOffset = 50;
+      const downscrollOffset = 720 - 150;
+      const endY = upscrollOffset + ((downscrollOffset - HALF_SWAG) * revPerc);
+      y = lerp(y, endY, clamp(rs, 0, 1));
+      if (!isReceptor) {
+        const strumTime = songPosMs + (visualDiff / pxPerMs);
+        if (Math.floor(songPosMs / moveSpeed) !== Math.floor(strumTime / moveSpeed)) {
+          rsFade = 0.5;
+        }
+      }
+    }
   }
 
-  // ---------- Drunk / Tipsy / Bumpy (DrunkModifier.hx – uses visualDiff) ----------
+  // ---------- LocalRotateModifier prefix=local, origin = mid of this field's receptors ----------
+  const lrx = (mod('localrotateX') + mod('local' + data + 'rotateX')) * TO_RAD;
+  const lry = (mod('localrotateY') + mod('local' + data + 'rotateY')) * TO_RAD;
+  const lrz = (mod('localrotateZ') + mod('local' + data + 'rotateZ')) * TO_RAD;
+  if (lrx || lry || lrz) {
+    const ox = (baseReceptorX(player, 0) + baseReceptorX(player, 3)) * 0.5;
+    const oy = 360;
+    const rr = rotateV3(x - ox, y - oy, z, lrx, lry, lrz);
+    x = rr.x + ox; y = rr.y + oy; z = rr.z;
+  }
+
+  // ---------- AccelModifier (boost / brake / wave) ----------
+  if (!(visualDiff <= 0 && mod('movePastReceptors') === 0 && !isReceptor)) {
+    const wave = mod('wave');
+    const brake = mod('brake');
+    const boost = mod('boost');
+    const effectHeight = 720;
+    let yAdjust = 0;
+    const rMult = scale(perc, 0, 1, 1, -1);
+    if (brake !== 0) {
+      const sc = scale(visualDiff, 0, effectHeight, 0, 1);
+      const off = visualDiff * sc;
+      yAdjust += clamp(brake * (off - visualDiff), -600, 600);
+    }
+    if (boost !== 0) {
+      const off = visualDiff * 1.5 / ((visualDiff + effectHeight / 1.2) / effectHeight);
+      yAdjust += clamp(boost * (off - visualDiff), -600, 600);
+    }
+    if (mod('wavePeriod') !== -1 && wave !== 0)
+      yAdjust += wave * 40 * Math.sin(visualDiff / ((114 * mod('wavePeriod')) + 114));
+    y += yAdjust * rMult;
+  }
+
+  // ---------- BeatModifier ----------
+  const bX = beatPulse(beat, mod('beatOffset'), mod('beatMult'));
+  const bY = beatPulse(beat, mod('beatYOffset'), mod('beatYMult'));
+  const bZ = beatPulse(beat, mod('beatZOffset'), mod('beatZMult'));
+  x += mod('beat') * (bX * Math.sin((visualDiff / ((mod('beatPeriod') * 30) + 30)) + Math.PI * 0.5));
+  y += mod('beatY') * (bY * Math.sin((visualDiff / ((mod('beatYPeriod') * 30) + 30)) + Math.PI * 0.5));
+  let beatZAmt = mod('beatZ') * (bZ * Math.sin((visualDiff / ((mod('beatZPeriod') * 30) + 30)) + Math.PI * 0.5));
+  if (legacyZ) beatZAmt /= 1280;
+  z += beatZAmt;
+
+  // ---------- Drunk / Tipsy / Bumpy (same stacking as the older web editor) ----------
+  // Troll 0.3 also has column / Tan / Schmovin variants. Applying those on top of
+  // the base mods made falling notes & holds look ~2–4× wilder than receptors,
+  // because visualDiff drives extra terms that are 0 on strums.
+  const t = timeSec;
+  const d = data;
+  x += applyDrunk(mod, '', t, visualDiff, d, Math.cos, legacyZ)
+    + applyTipsy(mod, 'X', t, visualDiff, d, Math.cos, legacyZ)
+    + applyBumpy(mod, 'X', t, visualDiff, d, Math.sin, legacyZ);
+  y += applyDrunk(mod, 'Y', t, visualDiff, d, Math.cos, legacyZ)
+    + applyTipsy(mod, '', t, visualDiff, d, Math.cos, legacyZ)
+    + applyBumpy(mod, 'Y', t, visualDiff, d, Math.sin, legacyZ);
+  z += applyDrunk(mod, 'Z', t, visualDiff, d, Math.cos, legacyZ)
+    + applyTipsy(mod, 'Z', t, visualDiff, d, Math.cos, legacyZ)
+    + applyBumpy(mod, '', t, visualDiff, d, Math.sin, legacyZ);
+  // Column / Tan / Schmovin stacks only if those named mods are actually set
+  const hasColDrunk = mod('drunk' + d) || mod('drunkY' + d) || mod('drunkZ' + d)
+    || mod('tipsyX' + d) || mod('tipsy' + d) || mod('tipsyZ' + d)
+    || mod('bumpyX' + d) || mod('bumpyY' + d) || mod('bumpy' + d);
+  const hasTan = mod('drunkTan') || mod('drunkTanY') || mod('drunkTanZ')
+    || mod('tipsyTanX') || mod('tipsyTan') || mod('tipsyTanZ')
+    || mod('bumpyTanX') || mod('bumpyTanY') || mod('bumpyTan');
+  const hasSch = mod('schmovinDrunk') || mod('schmovinDrunkY') || mod('schmovinDrunkZ')
+    || mod('schmovinTipsyX') || mod('schmovinTipsy') || mod('schmovinTipsyZ')
+    || mod('schmovinBumpyX') || mod('schmovinBumpyY') || mod('schmovinBumpy');
+  if (hasColDrunk) {
+    x += applyDrunk(mod, String(d), t, visualDiff, d, Math.cos, legacyZ)
+      + applyTipsy(mod, 'X' + d, t, visualDiff, d, Math.cos, legacyZ)
+      + applyBumpy(mod, 'X' + d, t, visualDiff, d, Math.sin, legacyZ);
+    y += applyDrunk(mod, 'Y' + d, t, visualDiff, d, Math.cos, legacyZ)
+      + applyTipsy(mod, String(d), t, visualDiff, d, Math.cos, legacyZ)
+      + applyBumpy(mod, 'Y' + d, t, visualDiff, d, Math.sin, legacyZ);
+    z += applyDrunk(mod, 'Z' + d, t, visualDiff, d, Math.cos, legacyZ)
+      + applyTipsy(mod, 'Z' + d, t, visualDiff, d, Math.cos, legacyZ)
+      + applyBumpy(mod, String(d), t, visualDiff, d, Math.sin, legacyZ);
+  }
+  if (hasTan) {
+    x += applyDrunk(mod, 'Tan', t, visualDiff, d, Math.tan, legacyZ)
+      + applyTipsy(mod, 'TanX', t, visualDiff, d, Math.tan, legacyZ)
+      + applyBumpy(mod, 'TanX', t, visualDiff, d, Math.tan, legacyZ);
+    y += applyDrunk(mod, 'TanY', t, visualDiff, d, Math.tan, legacyZ)
+      + applyTipsy(mod, 'Tan', t, visualDiff, d, Math.tan, legacyZ)
+      + applyBumpy(mod, 'TanY', t, visualDiff, d, Math.tan, legacyZ);
+    z += applyDrunk(mod, 'TanZ', t, visualDiff, d, Math.tan, legacyZ)
+      + applyTipsy(mod, 'TanZ', t, visualDiff, d, Math.tan, legacyZ)
+      + applyBumpy(mod, 'Tan', t, visualDiff, d, Math.tan, legacyZ);
+  }
+  if (hasSch) {
+    x += applySchmovinDrunk(mod, '', beat, visualDiff, d, Math.sin, legacyZ)
+      + applySchmovinTipsy(mod, 'X', beat, visualDiff, d, Math.sin, legacyZ)
+      + applySchmovinBumpy(mod, 'X', beat, visualDiff, Math.sin, legacyZ);
+    y += applySchmovinDrunk(mod, 'Y', beat, visualDiff, d, Math.sin, legacyZ)
+      + applySchmovinTipsy(mod, '', beat, visualDiff, d, Math.sin, legacyZ)
+      + applySchmovinBumpy(mod, 'Y', beat, visualDiff, Math.sin, legacyZ);
+    z += applySchmovinDrunk(mod, 'Z', beat, visualDiff, d, Math.sin, legacyZ)
+      + applySchmovinTipsy(mod, 'Z', beat, visualDiff, d, Math.sin, legacyZ)
+      + applySchmovinBumpy(mod, '', beat, visualDiff, Math.sin, legacyZ);
+  }
+
+  // ---------- PathModifier (tornado + family) ----------
+  const keyCunt = 3;
   const diff = visualDiff;
-  x += drunk(mod, data, timeSec, diff, "")
-     + tipsy(mod, data, timeSec, "X")
-     + bumpy(mod, data, diff, "X");
-  y += drunk(mod, data, timeSec, diff, "Y")
-     + tipsy(mod, data, timeSec, "")
-     + bumpy(mod, data, diff, "Y");
-  const zDrunk = drunk(mod, data, timeSec, diff, "Z")
-               + tipsy(mod, data, timeSec, "Z")
-               + bumpy(mod, data, diff, "");
-  if (zDrunk !== 0) {
-    const s = 1 + zDrunk * 0.004;
-    scaleX *= s; scaleY *= s;
+  // zigzag amplitude = perc * HALF_SWAG * triangle  (old editor pathZigzag)
+  // wiggle is aliased → zigzag, so a "wiggle" track is NOT also * 250.
+  const zigPerc = mod('zigzag');
+  if (zigPerc !== 0) {
+    const result = cTriangle((Math.PI * (1 / (mod('zigzagPeriod') + 1)) * ((diff + 100 * mod('zigzagOffset')) / SWAG)));
+    x += (zigPerc * HALF_SWAG) * result;
+  }
+  if (mod('zigzagZ') !== 0) {
+    const result = cTriangle((Math.PI * (1 / (mod('zigzagZPeriod') + 1)) * ((diff + 100 * mod('zigzagZOffset')) / SWAG)));
+    z += (mod('zigzagZ') * HALF_SWAG) * result;
+  }
+  if (mod('sawtooth') !== 0) {
+    const period = mod('sawtoothPeriod') + 1;
+    const p = (0.5 / period * diff) / SWAG;
+    x += (mod('sawtooth') * SWAG) * (p - Math.floor(p));
+  }
+  if (mod('square') !== 0) {
+    const cum = (Math.PI * (diff + mod('squareOffset')) / (SWAG + (mod('squarePeriod') * SWAG)));
+    x += mod('square') * HALF_SWAG * cSquare(cum);
+  }
+  if (mod('bounce') !== 0 && mod('bouncePeriod') !== -1) {
+    const bounce = Math.abs(Math.sin((diff + mod('bounceOffset')) / (90 + 90 * mod('bouncePeriod'))));
+    x += mod('bounce') * HALF_SWAG * bounce;
+  }
+  if (mod('bounceZ') !== 0 && mod('bounceZPeriod') !== -1) {
+    const bounce = Math.abs(Math.sin((diff + mod('bounceZOffset')) / (90 + 90 * mod('bounceZPeriod'))));
+    z += mod('bounceZ') * HALF_SWAG * bounce;
+  }
+  if (mod('xmode') !== 0) {
+    const enginePn = player === 0 ? 1 : 0; // preview 0 = opponent = engine 1
+    const sgn = (enginePn + 1) * 2 - 3;
+    x += mod('xmode') * (diff * sgn);
+  }
+  // tan() explodes near π/2; old editor never applied tornadoTan. Clamp for preview.
+  function safeTan(a){
+    const t = Math.tan(a);
+    if (!Number.isFinite(t)) return 0;
+    return Math.max(-3, Math.min(3, t));
+  }
+  function tornadoAxis(valName, offName, perName, fn, dest){
+    const val = mod(valName);
+    if (val === 0) return;
+    const playerColumn = data % 4;
+    const columnPhaseShift = (playerColumn * PI_THIRD) + mod(offName);
+    const phaseShift = (diff / 135) * (1 + mod(perName));
+    const zero = (-fn(-columnPhaseShift) + 1) * HALF_SWAG * keyCunt;
+    const off = (-fn(phaseShift - columnPhaseShift) + 1) * HALF_SWAG * keyCunt - zero;
+    if (dest === 'x') x += off * val; else z += off * val;
+  }
+  // One tornado at a time — same as the old editor (only "tornado" existed there).
+  tornadoAxis('tornado', 'tornadoOffset', 'tornadoPeriod', Math.cos, 'x');
+  tornadoAxis('tornadoTan', 'tornadoTanOffset', 'tornadoTanPeriod', safeTan, 'x');
+  tornadoAxis('tornadoZ', 'tornadoZOffset', 'tornadoZPeriod', Math.sin, 'z');
+  if (mod('tornadoTanZ') !== 0) {
+    const playerColumn = data % 4;
+    const columnPhaseShift = (playerColumn * PI_THIRD) + mod('tornadoTanZOffset') + Math.PI;
+    const phaseShift = (diff / 135) * (1 + mod('tornadoTanZPeriod'));
+    const zero = (-Math.sin(-columnPhaseShift) + 1) * HALF_SWAG * keyCunt;
+    const off = (-Math.tan(phaseShift - columnPhaseShift) + 1) * HALF_SWAG * keyCunt - zero;
+    z += off * mod('tornadoTanZ');
+  }
+  if (mod('itgTornado') !== 0 || mod('itgTornadoTan') !== 0) {
+    const width = 3;
+    const startColumn = clamp(data - width, 0, 3);
+    const endColumn = clamp(data + width, 0, 3);
+    const minX = baseReceptorX(player, startColumn);
+    const maxX = baseReceptorX(player, endColumn);
+    const realPixel = baseReceptorX(player, data);
+    const posBetween = scale(realPixel, minX, maxX, -1, 1);
+    const pb = clamp(posBetween, -1, 1);
+    if (mod('itgTornado') !== 0) {
+      let rads = Math.acos(pb);
+      rads += (diff + mod('itgTornadoOffset')) * (6 + mod('itgTornadoPeriod') * 6) / 720;
+      const adjusted = scale(Math.cos(rads), -1, 1, minX, maxX);
+      x += (adjusted - realPixel) * mod('itgTornado');
+    }
+    if (mod('itgTornadoTan') !== 0) {
+      let rads = Math.acos(pb);
+      rads += (diff + mod('itgTornadoTanOffset')) * (6 + mod('itgTornadoTanPeriod') * 6) / 720;
+      const adjusted = scale(Math.tan(rads), -1, 1, minX, maxX);
+      x += (adjusted - realPixel) * mod('itgTornadoTan');
+    }
+  }
+  if (mod('digital') > 0) {
+    const steps = mod('digitalSteps') + 1;
+    x += (mod('digital') * HALF_SWAG) * Math.floor(0.5 + (steps * Math.sin(getDigitalAngle(diff, mod('digitalOffset'), mod('digitalPeriod'))))) / steps;
+  }
+  if (mod('digitalZ') > 0) {
+    const steps = mod('digitalZSteps') + 1;
+    z += (mod('digitalZ') * HALF_SWAG) * Math.floor(0.5 + (steps * Math.sin(getDigitalAngle(diff, mod('digitalZOffset'), mod('digitalZPeriod'))))) / steps;
   }
 
-  // ---------- Path (tornado / zigzag / saw / square / bounce – visualDiff) ----------
-  // NOTE: pathWiggle is NOT added here. modAliases maps wiggle→zigzag, so including
-  // both pathZigzag and pathWiggle doubled X motion on holds/guides (visualDiff≠0)
-  // while receptors (visualDiff=0) looked fine. PathModifier.hx has no separate wiggle.
-  x += pathZigzag(mod, data, diff)
-     + pathSawtooth(mod, data, diff)
-     + pathSquare(mod, data, diff)
-     + pathBounce(mod, data, diff)
-     + pathTornado(mod, data, diff);
+  // WiggleModifier * 250 is NOT Troll PathModifier.
+  // The older editor mapped wiggle → zigzag so holds did not double-wave.
+  // Extra wiggle amplitude is skipped unless distortwiggle is used.
 
-  // ---------- Flip / Invert (SwapModifier) ----------
-  if (mod("flip") !== 0) x += SWAG * 2 * (1.5 - data) * mod("flip");
-  if (mod("invert") !== 0) x += SWAG * ((data % 2 === 0) ? 1 : -1) * mod("invert");
+  // ---------- optional InfinitePathModifier (approximate ring) ----------
+  if (mod('infinite') !== 0) {
+    const speed = 1850;
+    const prog = ((-visualDiff / speed) % 1 + 1) % 1;
+    const rad = prog * Math.PI * 2;
+    const ix = 640 + Math.sin(rad) * 600;
+    const iy = 360 + (Math.sin(rad) * Math.cos(rad)) * 600;
+    x = lerp(x, ix, clamp(mod('infinite'), 0, 1));
+    y = lerp(y, iy, clamp(mod('infinite'), 0, 1));
+  }
 
-  // ---------- Opponent Swap ----------
-  const os = mod("opponentSwap");
+  // ---------- SpiralModifier ----------
+  if (mod('spiralX') !== 0)
+    x += visualDiff * mod('spiralX') * Math.cos((mod('spiralXPeriod') + 1) * visualDiff + mod('spiralXOffset'));
+  if (mod('spiralY') !== 0)
+    y += visualDiff * mod('spiralY') * Math.sin((mod('spiralYPeriod') + 1) * visualDiff + mod('spiralYOffset'));
+  if (mod('spiralZ') !== 0)
+    z += visualDiff * mod('spiralZ') * Math.sin((mod('spiralZPeriod') + 1) * visualDiff + mod('spiralZOffset'));
+  const crotchet = (engine && engine.stepCrochet) ? engine.stepCrochet * 4 / 1000 : (60 / (state.bpm || 150));
+  function schmovinSpiral(axis, dest){
+    const val = mod('schmovinSpiral' + axis);
+    if (val === 0) return;
+    const dist = (mod('schmovinSpiral' + axis + 'Spacing') || 0) * 33.5;
+    const b = ((mod('schmovinSpiral' + axis + 'Speed') * beat) + mod('schmovinSpiral' + axis + 'Offset')) * Math.PI / 4;
+    const radiusOffset = -visualDiff / 4;
+    const radius = radiusOffset + dist * (data % 4);
+    const wave = axis === 'X'
+      ? Math.cos(-visualDiff / Math.max(crotchet, 0.001) * Math.PI + b)
+      : Math.sin(-visualDiff / Math.max(crotchet, 0.001) * Math.PI + b);
+    if (dest === 'x') x += wave * radius * val;
+    else if (dest === 'y') y += wave * radius * val;
+    else z += wave * radius * val;
+  }
+  schmovinSpiral('X', 'x');
+  schmovinSpiral('Y', 'y');
+  schmovinSpiral('Z', 'z');
+
+  // ---------- SwapModifier ----------
+  if (mod('invert') !== 0) x += SWAG * ((data % 2 === 0) ? 1 : -1) * mod('invert');
+  if (mod('flip') !== 0) x += SWAG * 2 * (1.5 - data) * mod('flip');
+
+  // ---------- OpponentModifier (preview player 0 = engine 1) ----------
+  const os = mod('opponentSwap');
   if (os !== 0) {
-    const ox = 90 + SWAG * data, px = 730 + SWAG * data;
-    x += (player === 0 ? px - ox : ox - px) * os;
+    const distX = 1280 / 2;
+    const enginePn = player === 0 ? 1 : 0;
+    const sgn = (enginePn + 1) * 2 - 3;
+    x += distX * sgn * os;
   }
 
-  // ---------- Transform (TransformModifier.hx) ----------
-  // pos.x += transformX + transform{data}X  (same for Y/Z)
-  // pos also gets moveX * swagWidth etc. — omitted unless those mods are used.
-  let tX = mod("transformX") + mod("transform" + data + "X");
-  let tY = mod("transformY") + mod("transform" + data + "Y");
-  let tZ = mod("transformZ") + mod("transform" + data + "Z");
+  // ---------- TransformModifier (LAST) + move* * swagWidth ----------
+  let tX = mod('transformX') + mod('transform' + data + 'X');
+  let tY = mod('transformY') + mod('transform' + data + 'Y');
+  let tZ = mod('transformZ') + mod('transform' + data + 'Z');
+  tX += (mod('moveX') + mod('move' + data + 'X')) * SWAG;
+  tY += (mod('moveY') + mod('move' + data + 'Y')) * SWAG;
+  tZ += (mod('moveZ') + mod('move' + data + 'Z')) * SWAG;
 
-  // ---------- Halo (custom blank mods + continuous qFunc, NOT a built-in modifier) ----------
-  // Matches bludlus / engine runtime:
-  //   setValue("transform"+col+"X", radiusX * Math.sin(input) * speed);  // OVERWRITES col X
-  //   setValue("transform"+col+"Z", radiusZ * Math.cos(input) * speed);  // OVERWRITES col Z
-  //   input = (col + 1 + beat) * mathRad(360/4) = (col+1+beat) * (PI/2)
-  // getValue(name, player) — second arg is player index, not a default.
-  // speed scales amplitude (not angular frequency); phase advances 90° per beat.
-  const haloSpeed = mod("haloSpeed");
+  // Halo blank-mods (custom, not Troll built-in)
+  const haloSpeed = mod('haloSpeed');
   if (haloSpeed !== 0) {
-    const radiusX = mod("haloRadiusX");
-    const radiusZ = mod("haloRadiusZ");
-    const input = (data + 1 + beat) * (Math.PI / 2); // mathRad(90)
-    // Overwrite column components (same as setValue on transform{col}*)
-    tX = mod("transformX") + radiusX * Math.sin(input) * haloSpeed;
-    tZ = mod("transformZ") + radiusZ * Math.cos(input) * haloSpeed;
+    const input = (data + 1 + beat) * (Math.PI / 2);
+    tX = mod('transformX') + mod('haloRadiusX') * Math.sin(input) * haloSpeed;
+    tZ = mod('transformZ') + mod('haloRadiusZ') * Math.cos(input) * haloSpeed;
+  }
+  x += tX !== 0 ? tX : (mod('x') + mod('xoffset'));
+  y += tY !== 0 ? tY : (mod('y') + mod('yoffset'));
+  z += tZ !== 0 ? tZ : (mod('z') + mod('zoffset'));
+
+  // ---------- SnapModifier (LAST) ----------
+  if (mod('snapX') !== 0)
+    x = lerp(x, coolSnap(x, def1(mod('snapXInterval'))), mod('snapX'));
+  if (mod('snapY') !== 0)
+    y = lerp(y, coolSnap(y, def1(mod('snapYInterval'))), mod('snapY'));
+  if (mod('snapZ') !== 0)
+    z = lerp(z, coolSnap(z, def1(mod('snapZInterval'))), mod('snapZ'));
+
+  // ---------- ColumnRotateModifier names: {col}rotateX (LAST-10) ----------
+  const crx = mod(data + 'rotateX') * TO_RAD;
+  const cry = mod(data + 'rotateY') * TO_RAD;
+  const crz = mod(data + 'rotateZ') * TO_RAD;
+  if (crx || cry || crz) {
+    const ox = baseReceptorX(player, data), oy = 360;
+    const rr = rotateV3(x - ox, y - oy, z, crx, cry, crz);
+    x = rr.x + ox; y = rr.y + oy; z = rr.z;
   }
 
-  x += tX !== 0 ? tX : (mod("x") + mod("xoffset"));
-  y += tY !== 0 ? tY : (mod("y") + mod("yoffset"));
-  const zAmt = tZ !== 0 ? tZ : (mod("z") + mod("zoffset"));
+  // ---------- RotateModifier prefix='' origin = column base X, screen mid Y ----------
+  const rx = (mod('rotateX') + mod(data + 'rotateX')) * TO_RAD;
+  const ry = (mod('rotateY') + mod(data + 'rotateY')) * TO_RAD;
+  const rz = (mod('rotateZ') + mod(data + 'rotateZ')) * TO_RAD;
+  // {n}rotate already applied in column rotate; RotateModifier ALSO adds prefix+data rotate.
+  // To avoid double-applying column rotates, only use field-level rotateX/Y/Z here.
+  const rxF = mod('rotateX') * TO_RAD;
+  const ryF = mod('rotateY') * TO_RAD;
+  const rzF = mod('rotateZ') * TO_RAD;
+  if (rxF || ryF || rzF) {
+    const ox = baseReceptorX(player, data), oy = 360;
+    const rr = rotateV3(x - ox, y - oy, z, rxF, ryF, rzF);
+    x = rr.x + ox; y = rr.y + oy; z = rr.z;
+  }
 
-  // ---------- Z via PerspectiveModifier + VectorHelpers.project ----------
-  // Engine (PerspectiveModifier, order LAST+1000):
-  //   pos.decrementBy(origin)           // origin = (width/2, height/2)
-  //   rotate by fieldPitch/Yaw/Roll
-  //   pos.decrementBy(fieldPos)         // fieldPos.z = 1280 + fieldZ  (default depth)
-  //   VectorHelpers.project(pos, 1280):
-  //     z' = pos.z / -cameraMaxSize
-  //     x' = pos.x / z'
-  //     y' = pos.y / z'
-  //   pos.incrementBy(origin)
-  // TransformModifier runs before perspective, so transformZ is in pos.z before project.
-  if (zAmt !== 0 || mod("fieldZ") !== 0 || mod("fieldYaw") !== 0 || mod("fieldPitch") !== 0 || mod("fieldRoll") !== 0) {
-    const originX = 640, originY = 360; // FlxG.width/height * 0.5 at 1280x720
+  // ---------- RotateModifier prefix='center' origin = screen center ----------
+  const cxr = (mod('centerrotateX') + mod('center' + data + 'rotateX')) * TO_RAD;
+  const cyr = (mod('centerrotateY') + mod('center' + data + 'rotateY')) * TO_RAD;
+  const czr = ((mod('centerrotateZ') || mod('centerrotate')) + (mod('center' + data + 'rotateZ') || 0)) * TO_RAD;
+  if (cxr || cyr || czr) {
+    const rr = rotateV3(x - 640, y - 360, z, cxr, cyr, czr);
+    x = rr.x + 640; y = rr.y + 360; z = rr.z;
+  }
+
+  // ---------- SkewModifier (approx on position; real one is per-vertex) ----------
+  if (mod('skewX') !== 0 || mod('skewY') !== 0) {
+    const centerX = (baseReceptorX(player, 0) + baseReceptorX(player, 3)) * 0.5;
+    let vx = x - centerX;
+    let vy = y - 360;
+    vx += vy * mod('skewX');
+    vy += 720 * vx / (SWAG * 4) * mod('skewY');
+    x = vx + centerX;
+    y = vy + 360;
+  }
+
+  // ---------- PerspectiveModifier + project ----------
+  if (z !== 0 || mod('fieldZ') !== 0 || mod('fieldYaw') !== 0 || mod('fieldPitch') !== 0 || mod('fieldRoll') !== 0) {
+    const originX = 640, originY = 360;
     const depth = 1280;
-    const legacy = mod("legacyZAxis") > 0;
-    const camSize = legacy ? 1 : depth;
+    const camSize = legacyZ ? 1 : depth;
     let px = x - originX;
     let py = y - originY;
-    let pz = zAmt; // relative z before field depth
-    // field offsets (PerspectiveModifier fieldPos is negated on apply)
-    px -= -mod("fieldX");
-    py -= -mod("fieldY");
-    pz -= (camSize + mod("fieldZ"));
-    // project
+    let pz = z;
+    const fp = rotateV3(px, py, pz, mod('fieldPitch') * TO_RAD, mod('fieldYaw') * TO_RAD, mod('fieldRoll') * TO_RAD);
+    px = fp.x - (-mod('fieldX'));
+    py = fp.y - (-mod('fieldY'));
+    pz = fp.z - (camSize + mod('fieldZ'));
     let zp = pz / -camSize;
     if (Math.abs(zp) < 1e-4) zp = (zp < 0 ? -1e-4 : 1e-4);
-    px = px / zp;
-    py = py / zp;
-    x = px + originX;
-    y = py + originY;
-    // apparent size scales with 1/z' (closer → larger)
+    x = px / zp + originX;
+    y = py / zp + originY;
     const s = 1 / zp;
     scaleX *= s;
     scaleY *= s;
   }
 
-  // ---------- Confusion (angle only) ----------
-  const conf = mod("confusion") + mod("confusion" + data);
-  const confOff = mod("confusionOffset") + mod("confusionOffset" + data);
-  const receptorAng = mod("receptorAngle") + mod("receptor" + data + "Angle");
-  const noteAng = mod("noteAngle") + mod("note" + data + "Angle");
-  angle = -((beat * conf) % 360) + confOff + receptorAng + noteAng;
-
-  // ---------- Rotate / CenterRotate (RotateModifier.hx) ----------
-  // Rotates the ALREADY-placed point around an origin. Because hold segments
-  // have different Y (from visualDiff), centerrotateX produces a curved hold —
-  // exactly like the real engine.
-  const centerRotX = mod("centerrotateX") + (mod("center" + data + "rotateX") || 0);
-  const centerRotY = mod("centerrotateY") + (mod("center" + data + "rotateY") || 0);
-  const centerRotZ = (mod("centerrotateZ") || mod("centerrotate"))
-                   + (mod("center" + data + "rotateZ") || 0);
-  const hasCenter = centerRotX !== 0 || centerRotY !== 0 || centerRotZ !== 0;
-  const rotX = hasCenter ? centerRotX : mod("rotatex");
-  const rotY = hasCenter ? centerRotY : mod("rotatey");
-  const rotZ = hasCenter ? centerRotZ : mod("rotatez");
-
-  if (rotX !== 0 || rotY !== 0 || rotZ !== 0) {
-    const originX = hasCenter ? 640 : baseX;
-    const originY = 360;
-    let dx = x - originX, dy = y - originY, dz = 0;
-    const ax = rotX * Math.PI / 180;
-    const ay = rotY * Math.PI / 180;
-    const az = rotZ * Math.PI / 180;
-    {
-      const c = Math.cos(az), s = Math.sin(az);
-      const x1 = dx * c - dy * s, y1 = dx * s + dy * c;
-      const cY = Math.cos(ay), sY = Math.sin(ay);
-      const x2 = x1 * cY - dz * sY, z1 = x1 * sY + dz * cY;
-      const cX = Math.cos(ax), sX = Math.sin(ax);
-      const z2 = z1 * cX - y1 * sX, y2 = z1 * sX + y1 * cX;
-      dx = x2; dy = y2; dz = z2;
-    }
-    x = originX + dx;
-    y = originY + dy;
-    if (dz !== 0) {
-      const s = 1 + dz * 0.0015;
-      scaleX *= s; scaleY *= s;
-    }
+  // ---------- ConfusionModifier (Z spin + X/Y tilt fake) ----------
+  function getConfusion(suffix){
+    const main = suffix ? mod('confusion' + suffix) + mod('confusion' + suffix + data)
+                        : mod('confusion') + mod('confusion' + data);
+    const off = suffix ? mod('confusion' + suffix + 'Offset') + mod('confusion' + suffix + 'Offset' + data)
+                       : mod('confusionOffset') + mod('confusionOffset' + data);
+    const mainAngle = -((beat * main) % 360);
+    return mainAngle + off;
   }
-
-  // ---------- Alpha / Stealth / Dark (AlphaModifier.hx — full submod set) ----------
-  // Notes:  stealth, sudden, hidden, blink, randomVanish, noteAlpha*, alpha*
-  // Receptors: dark*, alpha* only (stealth does NOT hide receptors)
-  // Glow: getGlow when hideStealthGlow/hideDarkGlow == 0 (returned for draw)
-  let glow = 0;
-  alpha = (1 - mod("alpha")) * (1 - mod("alpha" + data));
-
+  let angleX = getConfusion('X');
+  let angleY = getConfusion('Y');
+  let angleZ = getConfusion('');
   if (isReceptor) {
-    const darkVis = (1 - mod("dark")) * (1 - mod("dark" + data));
-    if (mod("dark") !== 0 || mod("dark" + data) !== 0) {
-      if (mod("hideDarkGlow") === 0) {
-        // getRealAlpha + getGlow
+    angleX += mod('receptorAngleX') + mod('receptor' + data + 'AngleX');
+    angleY += mod('receptorAngleY') + mod('receptor' + data + 'AngleY');
+    angleZ += mod('receptorAngle') + mod('receptor' + data + 'Angle');
+  } else {
+    angleX += mod('roll') * visualDiff * 0.5;
+    angleY += mod('twirl') * visualDiff * 0.5;
+    angleX += mod('noteAngleX') + mod('note' + data + 'AngleX');
+    angleY += mod('noteAngleY') + mod('note' + data + 'AngleY');
+    angleZ += mod('noteAngle') + mod('note' + data + 'Angle');
+    angleZ += ((0 * mod('dizzy')) % 360) * (180 / Math.PI);
+  }
+  angle = angleZ;
+  // approximate 3D card tilt
+  scaleX *= Math.max(0.15, Math.abs(Math.cos(angleY * TO_RAD)));
+  scaleY *= Math.max(0.15, Math.abs(Math.cos(angleX * TO_RAD)));
+
+  // ---------- AlphaModifier ----------
+  alpha = (1 - mod('alpha')) * (1 - mod('alpha' + data));
+  if (isReceptor) {
+    const darkVis = (1 - mod('dark')) * (1 - mod('dark' + data));
+    if (mod('dark') !== 0 || mod('dark' + data) !== 0) {
+      if (mod('hideDarkGlow') === 0) {
         if (darkVis >= 0.5) { alpha *= 1; glow = coolScale(darkVis, 1, 0.5, 0, 1.3); }
         else { alpha *= clamp(darkVis * 2, 0, 1); glow = 1; }
         glow = clamp(glow, 0, 1);
@@ -1352,54 +1680,35 @@ function computePos(engine, player, data, beat, timeSec, visualDiff, isReceptor)
       }
     }
   } else {
-    alpha *= (1 - mod("noteAlpha")) * (1 - mod("noteAlpha" + data));
-
+    alpha *= (1 - mod('noteAlpha')) * (1 - mod('noteAlpha' + data));
     const yPos = 50 + visualDiff;
     let vis = 1;
-    if (!(yPos < 0 && mod("stealthPastReceptors") === 0)) {
+    if (!(yPos < 0 && mod('stealthPastReceptors') === 0)) {
       const fadeDistY = 120;
       const halfH = 360;
-      const hidden = mod("hidden");
-      const sudden = mod("sudden");
+      const hidden = mod('hidden');
+      const sudden = mod('sudden');
       const hiddenSudden = hidden * sudden;
-      const hiddenOff = mod("hiddenOffset");
-      const suddenOff = mod("suddenOffset");
-
+      const hiddenOff = mod('hiddenOffset');
+      const suddenOff = mod('suddenOffset');
       const hiddenEnd   = halfH + fadeDistY * coolScale(hiddenSudden, 0, 1, -1, -1.25) + halfH * hiddenOff;
       const hiddenStart = halfH + fadeDistY * coolScale(hiddenSudden, 0, 1, 0, -0.25) + halfH * hiddenOff;
       const suddenEnd   = halfH + fadeDistY * coolScale(hiddenSudden, 0, 1, 1,  1.25) + halfH * suddenOff;
       const suddenStart = halfH + fadeDistY * coolScale(hiddenSudden, 0, 1, 0,  0.25) + halfH * suddenOff;
-
       let acc = 0;
-      if (hidden !== 0) {
-        const hiddenAdjust = clamp(coolScale(yPos, hiddenStart, hiddenEnd, 0, -1), -1, 0);
-        acc += hidden * hiddenAdjust;
-      }
-      if (sudden !== 0) {
-        const suddenAdjust = clamp(coolScale(yPos, suddenStart, suddenEnd, 0, -1), -1, 0);
-        acc += sudden * suddenAdjust;
-      }
-      acc -= mod("stealth");
-
-      // blink — CoolUtil.quantizeAlpha(sin(time*10), 0.3333)
-      const blink = mod("blink");
+      if (hidden !== 0) acc += hidden * clamp(coolScale(yPos, hiddenStart, hiddenEnd, 0, -1), -1, 0);
+      if (sudden !== 0) acc += sudden * clamp(coolScale(yPos, suddenStart, suddenEnd, 0, -1), -1, 0);
+      acc -= mod('stealth') + mod('stealth' + data);
+      const blink = mod('blink');
       if (blink !== 0) {
         const f = quantizeAlpha(Math.sin(timeSec * 10), 0.3333);
         acc += coolScale(f, 0, 1, -1, 0) * blink;
       }
-
-      // randomVanish — fade by |yPos| between 240 and 480
-      const rv = mod("randomVanish");
-      if (rv !== 0) {
-        const realFadeDist = 240;
-        acc += coolScale(Math.abs(yPos), realFadeDist, 2 * realFadeDist, -1, 0) * rv;
-      }
-
+      const rv = mod('vanish') || mod('randomVanish');
+      if (rv !== 0) acc += coolScale(Math.abs(yPos), 240, 480, -1, 0) * rv;
       vis = clamp(acc + 1, 0, 1);
     }
-
-    if (mod("hideStealthGlow") === 0) {
-      // getRealAlpha(vis) + getGlow(vis)
+    if (mod('hideStealthGlow') === 0) {
       if (vis >= 0.5) { alpha *= 1; glow = coolScale(vis, 1, 0.5, 0, 1.3); }
       else { alpha *= clamp(vis * 2, 0, 1); glow = 1; }
       glow = clamp(glow, 0, 1);
@@ -1407,13 +1716,22 @@ function computePos(engine, player, data, beat, timeSec, visualDiff, isReceptor)
       alpha *= vis;
     }
   }
-  alpha = clamp(alpha, 0, 1);
+  alpha = clamp(alpha * rsFade, 0, 1);
+
+  // ---------- ZoomModifier name=mini — NoteField.preDraw vertex zoom ----------
+  const fieldZoom = 1 - 0.5 * mod('mini');
+  if (fieldZoom !== 1) {
+    x = (x - 640) * fieldZoom + 640;
+    y = (y - 360) * fieldZoom + 360;
+    scaleX *= fieldZoom;
+    scaleY *= fieldZoom;
+  }
+
   scaleX = Math.max(scaleX, 0.02);
   scaleY = Math.max(scaleY, 0.02);
   return {x, y, angle, scaleX, scaleY, alpha, glow: (glow != null ? glow : 0)};
 }
 
-/** Receptors always use visualDiff = 0 and isReceptor = true (stealth does not apply) */
 function computeReceptor(engine, player, data, beat, timeSec){
   return computePos(engine, player, data, beat, timeSec, 0, true);
 }
@@ -2179,7 +2497,7 @@ function drawArrow(ctx, x, y, dir, angle, sx, sy, alpha, size, glow, isReceptor)
         ctx.shadowBlur = 16 + glow * 28;
       }
       // size is approximate target height; scale uniformly to fit
-      const scale = (size / Math.max(f.w, f.h)) * 1.05;
+      const scale = size / Math.max(f.w, f.h);
       ctx.scale(sx * scale, sy * scale);
       ctx.drawImage(assets.noteImg, f.x, f.y, f.w, f.h, -f.w/2, -f.h/2, f.w, f.h);
       ctx.restore();
@@ -2315,8 +2633,10 @@ function renderPreview(){
   // warp notes & holds independently (matches NoteField + modifiers in Haxe).
   // Pure transformX still keeps notes locked under the receptor (no visualDiff term).
   if(state.showChartNotes && state.chartNotes.length){
+    // Troll: visPos = timeDiff * getNoteSpeed * Note.pixelsPerMS(0.45)
+    // getNoteSpeed = songSpeed * note.multSpeed * xmod * xmod{col}  (xmod applied inside computePos)
     const speed = Math.max(0.1, state.chartSpeed || 1);
-    const pxPerMs = 0.45 * speed; // ModManager.getBaseVisPosD
+    const pxPerMs = 0.45 * speed;
     const windowPast = 400;
     const windowFuture = 2200;
     const pos = state.songPos;
@@ -2403,8 +2723,10 @@ function renderPreview(){
 
       if(dt > -80 && head.y > -40 && head.y < H + 40){
         // Base size only — scaleX/scaleY go through drawArrow's ctx.scale (same as receptors).
-        // Previously size was multiplied by scaleX AND ctx.scale used scaleX → intensity² on notes.
-        const size = (n.player === 0 ? 72 : 64) * 0.92;
+        // Match Troll: Note.swagWidth is both lane spacing AND sprite size.
+        // drunk amp = perc * halfWidth, tipsy = perc * swagWidth * 0.4
+        // Old 64–72px heads made 1.0 drunk (~56px) look ~1.7× too strong.
+        const size = SWAG * 0.95;
         drawArrow(ctx, head.x, head.y, n.data, head.angle || 0, head.scaleX || 1, head.scaleY || 1, Math.min(1, head.alpha != null ? head.alpha : 1), size, head.glow != null ? head.glow : 0, false);
       }
     }
@@ -2413,7 +2735,7 @@ function renderPreview(){
   // Receptors on top
   for(let p=0;p<2;p++) for(let d=0;d<4;d++){
     const r = computeReceptor(engine, p, d, beat, timeSec);
-    const size = (p===0?96:84) * pulse;
+    const size = SWAG * (p===0 ? 0.98 : 0.92) * pulse;
     drawArrow(ctx, r.x, r.y, d, r.angle, r.scaleX, r.scaleY, r.alpha, size, r.glow != null ? r.glow : 0, true);
   }
 
@@ -2512,35 +2834,46 @@ function buildContinuousBody(func, mod, playerArg) {
 }
 
 /* ---------- Embedded EnhancedModchartTemplate.lua (for Vanilla Psych download) ---------- */
-const ENHANCED_MODCHART_TEMPLATE = `-- Enhanced Psych Lua Modchart Template (v3 - corrected maths vs Troll Engine)
+const ENHANCED_MODCHART_TEMPLATE = `-- Enhanced Psych Lua Modchart Template (v4)
 -- Original by TheZoroForce240 (Simple Modchart Template)
--- Math ported/corrected from Troll Engine modifiers:
---   DrunkModifier.hx, PathModifier.hx, BeatModifier.hx, ReverseModifier.hx,
---   ConfusionModifier.hx, TransformModifier.hx, PerspectiveModifier.hx
--- Compatible with the web Sequence Editor "Vanilla Psych" export
+-- Math aligned to the web Sequence Editor preview (Troll Engine 0.3.0 port):
+--   DrunkModifier, PathModifier, BeatModifier, ReverseModifier, AccelModifier,
+--   ConfusionModifier, TransformModifier, PerspectiveModifier, ScaleModifier,
+--   SwapModifier, SpiralModifier, ZoomModifier
+-- Compatible with the web editor "Vanilla Psych" export
 -- (setModifierX/Y/Z + easeModifierX/Y/Z events)
 --
--- v3 fixes (vs real Troll sources + editor JS):
---   * Bumpy period: (period*24)+24  (was *16)
---   * Bounce: plain offset/period, denom (90 + 90*period)
---   * Tornado: halfWidth*(keyCount-1), + Offset/Period submods
---   * TipsyZ alias (tipZ -> tipsyZ)
---   * Beat: fractional-beat handling + Z axis support
---   * Zigzag/Square/Sawtooth/Drunk/Tipsy aligned to Haxe
+-- v4 (vs editor JS computePos):
+--   * CoolMath.triangle / CoolMath.square match Troll (not the old 0..1 triangle)
+--   * Drunk period uses /720 like the editor (FlxG.height fallback)
+--   * Bumpy period (period*24)+24
+--   * TipsyZ + tipZ aliases
+--   * Tornado family: Offset/Period, tornadoZ, tornadoTan, itgTornado
+--   * Zigzag/Square/Sawtooth/Bounce/Digital/XMode
+--   * Wave / Boost / Brake (AccelModifier yAdjust)
+--   * SpiralX/Y/Z + schmovinDrunk/Tipsy/Bumpy
+--   * Flip / Invert / OpponentSwap / Centered
+--   * Tiny = 0.5^value (ScaleModifier), mini = field zoom
+--   * Halo blank-mods (haloRadiusX/Z * haloSpeed)
+--   * moveX/Y/Z * swagWidth
+--   * Wiggle aliased to zigzag (same as the editor)
+--   * getVal reads .x + .y + .angle so export axis mapping cannot miss a value
 
 local modchart = true
 
 local keyCount = 4
 local maxStrums = 12 -- 0-3 Opponent, 4-7 Player, 8-11 Auxiliary
-local arrowSize = 112 -- Note.swagWidth
+local arrowSize = 112 -- Note.swagWidth * 0.7
 local halfWidth = arrowSize * 0.5
 local scrollSwitch = 520
+local PI_THIRD = math.pi / 3
+local TO_RAD = math.pi / 180
 
 local defaultSusScaleY = -1
 local defaultSusEndScaleY = -1
 
 -- ============================================
--- HELPERS (match Haxe CoolUtil / FlxMath)
+-- HELPERS (CoolUtil / CoolMath / editor JS)
 -- ============================================
 local function clamp(v, lo, hi)
 	if v < lo then return lo end
@@ -2557,40 +2890,71 @@ local function scale(x, min, max, a, b)
 	return a + ((x - min) / (max - min)) * (b - a)
 end
 
--- Triangle wave used by zigzag (PathModifier.hx)
-local function triangle(angle)
-	local fAngle = angle % (math.pi * 2)
-	if fAngle < 0 then fAngle = fAngle + math.pi * 2 end
-	local result = fAngle * (1 / math.pi)
-	if result < 0.5 then
-		return result * 2
-	elseif result < 1.5 then
-		return 1 - ((result - 0.5) * 2)
-	else
-		return -4 + (result * 2)
-	end
+local function def1(v)
+	if v == 0 or v == nil then return 1 end
+	return v
 end
 
--- Square wave used by square (PathModifier.hx)
-local function squareWave(angle)
-	local fAngle = angle % (math.pi * 2)
-	if fAngle < 0 then fAngle = fAngle + math.pi * 2 end
-	return (fAngle >= math.pi) and -1 or 1
+-- CoolMath.triangle (editor cTriangle)
+local function cTriangle(angle)
+	local p = angle / math.pi
+	p = p - 2 * math.floor(p / 2)
+	if p < 0 then p = p + 2 end
+	if p < 1 then return (2 * p - 1) end
+	return (3 - 2 * p)
+end
+
+-- CoolMath.square — sign of sin
+local function cSquare(angle)
+	local s = math.sin(angle)
+	if s >= 0 then return 1 end
+	return -1
+end
+
+local function safeTan(a)
+	local t = math.tan(a)
+	if t ~= t or t == math.huge or t == -math.huge then return 0 end
+	return clamp(t, -3, 3)
+end
+
+local function coolSnap(v, interval)
+	if not interval or interval == 0 then return v end
+	return math.floor(v / interval + 0.5) * interval
+end
+
+-- Sum .x/.y/.angle so setModifierX/Y/Z all feed the same magnitude
+local function getVal(name)
+	if not name or name == '' then return 0 end
+	return (getProperty(name .. '.x') or 0)
+		+ (getProperty(name .. '.y') or 0)
+		+ (getProperty(name .. '.angle') or 0)
+end
+
+-- Global + per-strum (0-11) + per-column (0-3)
+local function getMod(name, data, col)
+	return getVal(name) + getVal(name .. data) + getVal(name .. col)
+end
+
+local function getModOnly(name)
+	return getVal(name)
 end
 
 -- ============================================
--- RUN MODIFIERS - accurate Troll Engine math
--- data = column index, curPos = visual distance from receptor (pixels * speed)
--- Returns {xOffset, yOffset, zOffset, angle}
+-- RUN MODIFIERS — Troll 0.3.0 / editor computePos
+-- data = strum index, curPos = visual distance from receptor
+-- Returns {xOffset, yOffset, zOffset, angle, scaleX, scaleY, alpha}
 -- ============================================
 function runModifiers(data, curPos)
 	local xOffset = 0
 	local yOffset = 0
 	local zOffset = 0
 	local angle = 0
+	local scaleX = 1
+	local scaleY = 1
+	local alphaMul = 1
 
 	local playerColumn = data % keyCount
-	local songPos = getSongPosition() * 0.001 -- seconds
+	local songPos = getSongPosition() * 0.001
 	local beat = 0
 	if curDecBeat then
 		beat = curDecBeat
@@ -2601,222 +2965,252 @@ function runModifiers(data, curPos)
 	end
 
 	local screenH = screenHeight or 720
+	local drunkDiv = 720
+	if screenH > 0 then drunkDiv = screenH end
 
-	-- Helper to read a sprite property safely (global + per-column)
-	local function getMod(name, axis)
-		axis = axis or 'x'
-		local g = getProperty(name .. '.' .. axis) or 0
-		local c = getProperty(name .. data .. '.' .. axis) or 0
-		return g + c
+	local function mod(name)
+		return getMod(name, data, playerColumn)
 	end
 
-	local function getModOnly(name, axis)
-		return getProperty(name .. '.' .. (axis or 'x')) or 0
-	end
-
-	-- ============================================
-	-- TRANSFORM (TransformModifier.hx) - direct offsets
-	-- ============================================
-	xOffset = xOffset + getMod('transformX', 'x') + getMod('strumOffset', 'x')
-	yOffset = yOffset + getMod('transformY', 'y') + getMod('strumOffset', 'y')
-	zOffset = zOffset + getMod('transformZ', 'angle') + getMod('strumOffset', 'angle')
-
-	-- ============================================
-	-- DRUNK (DrunkModifier.hx - exact)
-	-- angle = time*(1+speed) + data*((offset*0.2)+0.2) + visualDiff*((period*10)+10)/height
-	-- return perc * cos(angle) * swagWidth * 0.5
-	-- ============================================
-	local function applyDrunk(axis, outAxis)
-		local perc
-		if axis == '' then
-			perc = getMod('drunk', 'x')
-		else
-			perc = getMod('drunk' .. axis, outAxis or 'x')
+	local legacyZ = mod('legacyZAxis') > 0
+	local function drunkAdjust(axis, val)
+		if legacyZ and (string.sub(axis, 1, 1) == 'Z' or string.sub(axis, 1, 4) == 'TanZ') then
+			return val / 1280
 		end
+		return val
+	end
+
+	-- ---------- ScaleModifier (tiny / scale / stretch / squish) ----------
+	local tiny = mod('tiny')
+	local tinyX = mod('tinyX') + mod('tinyx')
+	local tinyY = mod('tinyY') + mod('tinyy')
+	scaleX = scaleX * (0.5 ^ tinyX) * (0.5 ^ tiny)
+	scaleY = scaleY * (0.5 ^ tinyY) * (0.5 ^ tiny)
+	scaleX = scaleX * def1(mod('scale')) * def1(mod('scaleX'))
+	scaleY = scaleY * def1(mod('scale')) * def1(mod('scaleY'))
+	local stretch = mod('stretch')
+	local squish = mod('squish')
+	scaleX = scaleX * lerp(1, 0.5, stretch) * lerp(1, 2, squish)
+	scaleY = scaleY * lerp(1, 2, stretch) * lerp(1, 0.5, squish)
+
+	-- ---------- Transform + move* * swagWidth + offsets ----------
+	xOffset = xOffset + mod('transformX') + mod('strumOffset') + mod('x') + mod('xoffset')
+	yOffset = yOffset + mod('transformY') + mod('y') + mod('yoffset')
+	zOffset = zOffset + mod('transformZ') + mod('z') + mod('zoffset')
+	xOffset = xOffset + (mod('moveX') * arrowSize)
+	yOffset = yOffset + (mod('moveY') * arrowSize)
+	zOffset = zOffset + (mod('moveZ') * arrowSize)
+
+	-- column transform0X / transformX0 style
+	xOffset = xOffset + getVal('transform' .. playerColumn .. 'X') + getVal('transformX' .. playerColumn)
+	yOffset = yOffset + getVal('transform' .. playerColumn .. 'Y') + getVal('transformY' .. playerColumn)
+	zOffset = zOffset + getVal('transform' .. playerColumn .. 'Z') + getVal('transformZ' .. playerColumn)
+
+	-- Halo blank-mods (editor / bludlus)
+	local haloSpeed = mod('haloSpeed')
+	if haloSpeed ~= 0 then
+		local input = (playerColumn + 1 + beat) * (math.pi / 2)
+		xOffset = xOffset + mod('haloRadiusX') * math.sin(input) * haloSpeed
+		zOffset = zOffset + mod('haloRadiusZ') * math.cos(input) * haloSpeed
+	end
+
+	-- ---------- Drunk / Tipsy / Bumpy ----------
+	local function applyDrunk(axis, mathFunc)
+		mathFunc = mathFunc or math.cos
+		local perc
+		if axis == '' then perc = mod('drunk') else perc = mod('drunk' .. axis) end
 		if perc == 0 then return 0 end
-		local speed, period, offset
+		local speed = getModOnly('drunk' .. axis .. 'Speed')
+		local period = getModOnly('drunk' .. axis .. 'Period')
+		local offset = getModOnly('drunk' .. axis .. 'Offset')
 		if axis == '' then
-			speed  = getModOnly('drunkSpeed', 'x')
-			period = getModOnly('drunkPeriod', 'x')
-			offset = getModOnly('drunkOffset', 'x')
-		else
-			speed  = getModOnly('drunk' .. axis .. 'Speed', 'x')
-			period = getModOnly('drunk' .. axis .. 'Period', 'x')
-			offset = getModOnly('drunk' .. axis .. 'Offset', 'x')
+			speed = getModOnly('drunkSpeed')
+			period = getModOnly('drunkPeriod')
+			offset = getModOnly('drunkOffset')
 		end
-		local ang = songPos * (1 + speed) + playerColumn * ((offset * 0.2) + 0.2) + curPos * ((period * 10) + 10) / screenH
-		return perc * (math.cos(ang) * halfWidth)
+		local ang = songPos * (1 + speed) + playerColumn * ((offset * 0.2) + 0.2) + curPos * ((period * 10) + 10) / drunkDiv
+		return drunkAdjust(axis, perc * (mathFunc(ang) * halfWidth))
 	end
 
-	xOffset = xOffset + applyDrunk('', 'x')
-	yOffset = yOffset + applyDrunk('Y', 'y')
-	zOffset = zOffset + applyDrunk('Z', 'angle')
-
-	-- ============================================
-	-- TIPSY (DrunkModifier.hx - exact)
-	-- perc * cos(time*((speed*1.2)+1.2) + data*((offset*1.8)+1.8)) * swagWidth * 0.4
-	-- ============================================
-	local function applyTipsy(axis, outAxis)
-		local perc
-		local speed, offset
+	local function applyTipsy(axis, mathFunc)
+		mathFunc = mathFunc or math.cos
+		local perc, speed, offset
 		if axis == '' then
-			perc = getMod('tipsy', 'y')
-			speed  = getModOnly('tipsySpeed', 'x')
-			offset = getModOnly('tipsyOffset', 'x')
+			perc = mod('tipsy')
+			speed = getModOnly('tipsySpeed')
+			offset = getModOnly('tipsyOffset')
 		elseif axis == 'Z' then
-			-- tipZ is an alias for tipsyZ (Troll Engine getAliases)
-			perc = getMod('tipsyZ', outAxis or 'angle') + getMod('tipZ', outAxis or 'angle')
-			speed  = getModOnly('tipsyZSpeed', 'x') + getModOnly('tipZSpeed', 'x')
-			offset = getModOnly('tipsyZOffset', 'x') + getModOnly('tipZOffset', 'x')
+			perc = mod('tipsyZ') + mod('tipZ')
+			speed = getModOnly('tipsyZSpeed') + getModOnly('tipZSpeed')
+			offset = getModOnly('tipsyZOffset') + getModOnly('tipZOffset')
 		else
-			perc = getMod('tipsy' .. axis, outAxis or 'x')
-			speed  = getModOnly('tipsy' .. axis .. 'Speed', 'x')
-			offset = getModOnly('tipsy' .. axis .. 'Offset', 'x')
+			perc = mod('tipsy' .. axis)
+			speed = getModOnly('tipsy' .. axis .. 'Speed')
+			offset = getModOnly('tipsy' .. axis .. 'Offset')
 		end
 		if perc == 0 then return 0 end
 		local ang = songPos * ((speed * 1.2) + 1.2) + playerColumn * ((offset * 1.8) + 1.8)
-		return perc * (math.cos(ang) * arrowSize * 0.4)
+		return drunkAdjust(axis, perc * (mathFunc(ang) * arrowSize * 0.4))
 	end
 
-	xOffset = xOffset + applyTipsy('X', 'x')
-	yOffset = yOffset + applyTipsy('', 'y')
-	zOffset = zOffset + applyTipsy('Z', 'angle')
-
-	-- ============================================
-	-- BUMPY (DrunkModifier.hx - exact)
-	-- angle = (visualDiff + 100*offset) / ((period*24)+24)
-	-- return perc * 40 * sin(angle)
-	-- ============================================
-	local function applyBumpy(axis, outAxis)
-		local perc
-		local period, offset
+	local function applyBumpy(axis, mathFunc)
+		mathFunc = mathFunc or math.sin
+		local perc, period, offset
 		if axis == '' then
-			perc = getMod('bumpy', 'y')
-			period = getModOnly('bumpyPeriod', 'x')
-			offset = getModOnly('bumpyOffset', 'x')
+			perc = mod('bumpy')
+			period = getModOnly('bumpyPeriod')
+			offset = getModOnly('bumpyOffset')
 		else
-			perc = getMod('bumpy' .. axis, outAxis or 'y')
-			period = getModOnly('bumpy' .. axis .. 'Period', 'x')
-			offset = getModOnly('bumpy' .. axis .. 'Offset', 'x')
+			perc = mod('bumpy' .. axis)
+			period = getModOnly('bumpy' .. axis .. 'Period')
+			offset = getModOnly('bumpy' .. axis .. 'Offset')
 		end
 		if perc == 0 or period == -1 then return 0 end
 		local ang = (curPos + (100 * offset)) / ((period * 24) + 24)
-		return perc * 40 * math.sin(ang)
+		return drunkAdjust(axis, perc * 40 * mathFunc(ang))
 	end
 
-	xOffset = xOffset + applyBumpy('X', 'x')
-	yOffset = yOffset + applyBumpy('Y', 'y')
-	zOffset = zOffset + applyBumpy('', 'y')
+	xOffset = xOffset + applyDrunk('', math.cos) + applyTipsy('X', math.cos) + applyBumpy('X', math.sin)
+	yOffset = yOffset + applyDrunk('Y', math.cos) + applyTipsy('', math.cos) + applyBumpy('Y', math.sin)
+	zOffset = zOffset + applyDrunk('Z', math.cos) + applyTipsy('Z', math.cos) + applyBumpy('', math.sin)
 
-	-- ============================================
-	-- TORNADO (PathModifier.hx / Schmovin - exact)
-	-- uses halfWidth * (keyCount-1), + Offset/Period
-	-- ============================================
-	local tornado = getMod('tornado', 'x')
-	if tornado ~= 0 then
+	-- Tan variants (only if actually set)
+	if mod('drunkTan') ~= 0 or mod('tipsyTanX') ~= 0 or mod('bumpyTanX') ~= 0 then
+		xOffset = xOffset + applyDrunk('Tan', safeTan) + applyTipsy('TanX', safeTan) + applyBumpy('TanX', safeTan)
+	end
+	if mod('drunkTanY') ~= 0 or mod('tipsyTan') ~= 0 or mod('bumpyTanY') ~= 0 then
+		yOffset = yOffset + applyDrunk('TanY', safeTan) + applyTipsy('Tan', safeTan) + applyBumpy('TanY', safeTan)
+	end
+	if mod('drunkTanZ') ~= 0 or mod('tipsyTanZ') ~= 0 or mod('bumpyTan') ~= 0 then
+		zOffset = zOffset + applyDrunk('TanZ', safeTan) + applyTipsy('TanZ', safeTan) + applyBumpy('Tan', safeTan)
+	end
+
+	-- Schmovin family
+	local function applySchDrunk(axis, mathFunc)
+		mathFunc = mathFunc or math.sin
+		local prefix = 'schmovinDrunk' .. axis
+		local perc = (axis == '') and mod('schmovinDrunk') or mod(prefix)
+		if perc == 0 then return 0 end
+		local offset = getModOnly(prefix .. 'Offset')
+		local period = 1 + getModOnly(prefix .. 'Period')
+		local speed = 1 + getModOnly(prefix .. 'Speed')
+		local phase = (playerColumn * 0.5) + offset + (curPos * period) / 222 * math.pi
+		return drunkAdjust(axis, mathFunc((beat * speed) / 4 * math.pi + phase) * halfWidth * perc)
+	end
+	local function applySchTipsy(axis, mathFunc)
+		mathFunc = mathFunc or math.sin
+		local prefix = 'schmovinTipsy' .. axis
+		local perc = mod(prefix)
+		if perc == 0 then return 0 end
+		local offset = getModOnly(prefix .. 'Offset')
+		local speed = 1 + getModOnly(prefix .. 'Speed')
+		return drunkAdjust(axis, mathFunc((beat * speed) / 4 * math.pi + playerColumn + offset) * halfWidth * perc)
+	end
+	local function applySchBumpy(axis, mathFunc)
+		mathFunc = mathFunc or math.sin
+		local prefix = 'schmovinBumpy' .. axis
+		local perc = mod(prefix)
+		if perc == 0 then return 0 end
+		local offset = getModOnly(prefix .. 'Offset')
+		local period = 1 + getModOnly(prefix .. 'Period')
+		return drunkAdjust(axis, mathFunc(curPos / (300 + 300 * period) * math.pi * 2 + offset) * 40 * perc)
+	end
+	if mod('schmovinDrunk') ~= 0 or mod('schmovinDrunkY') ~= 0 or mod('schmovinDrunkZ') ~= 0
+		or mod('schmovinTipsyX') ~= 0 or mod('schmovinTipsy') ~= 0 or mod('schmovinTipsyZ') ~= 0
+		or mod('schmovinBumpyX') ~= 0 or mod('schmovinBumpyY') ~= 0 or mod('schmovinBumpy') ~= 0 then
+		xOffset = xOffset + applySchDrunk('', math.sin) + applySchTipsy('X', math.sin) + applySchBumpy('X', math.sin)
+		yOffset = yOffset + applySchDrunk('Y', math.sin) + applySchTipsy('', math.sin) + applySchBumpy('Y', math.sin)
+		zOffset = zOffset + applySchDrunk('Z', math.sin) + applySchTipsy('Z', math.sin) + applySchBumpy('', math.sin)
+	end
+
+	-- ---------- PathModifier ----------
+	local zigPerc = mod('zigzag') + mod('wiggle') -- editor aliases wiggle -> zigzag
+	if zigPerc ~= 0 then
+		local result = cTriangle(math.pi * (1 / (mod('zigzagPeriod') + 1)) * ((curPos + 100 * mod('zigzagOffset')) / arrowSize))
+		xOffset = xOffset + (zigPerc * halfWidth) * result
+	end
+	if mod('zigzagZ') ~= 0 then
+		local result = cTriangle(math.pi * (1 / (mod('zigzagZPeriod') + 1)) * ((curPos + 100 * mod('zigzagZOffset')) / arrowSize))
+		zOffset = zOffset + (mod('zigzagZ') * halfWidth) * result
+	end
+	if mod('sawtooth') ~= 0 then
+		local period = mod('sawtoothPeriod') + 1
+		local p = (0.5 / period * curPos) / arrowSize
+		xOffset = xOffset + (mod('sawtooth') * arrowSize) * (p - math.floor(p))
+	end
+	if mod('square') ~= 0 then
+		local cum = math.pi * (curPos + mod('squareOffset')) / (arrowSize + (mod('squarePeriod') * arrowSize))
+		xOffset = xOffset + mod('square') * halfWidth * cSquare(cum)
+	end
+	if mod('bounce') ~= 0 and mod('bouncePeriod') ~= -1 then
+		local b = math.abs(math.sin((curPos + mod('bounceOffset')) / (90 + 90 * mod('bouncePeriod'))))
+		xOffset = xOffset + mod('bounce') * halfWidth * b
+	end
+	if mod('bounceZ') ~= 0 and mod('bounceZPeriod') ~= -1 then
+		local b = math.abs(math.sin((curPos + mod('bounceZOffset')) / (90 + 90 * mod('bounceZPeriod'))))
+		zOffset = zOffset + mod('bounceZ') * halfWidth * b
+	end
+	if mod('xmode') ~= 0 then
+		-- opponent (data < 4) vs player — match editor sgn
+		local isPlayer = (data >= keyCount and data < keyCount * 2)
+		local sgn = isPlayer and -1 or 1
+		xOffset = xOffset + mod('xmode') * (curPos * sgn)
+	end
+
+	local function tornadoAxis(valName, offName, perName, fn, dest)
+		local val = mod(valName)
+		if val == 0 then return end
+		local columnPhase = (playerColumn * PI_THIRD) + mod(offName)
+		local phase = (curPos / 135) * (1 + mod(perName))
 		local keyCunt = keyCount - 1
-		local columnPhase = (playerColumn * (math.pi / 3)) + (getModOnly('tornadoOffset', 'x') or 0)
-		local phase = (curPos / 135) * (1 + (getModOnly('tornadoPeriod', 'x') or 0))
-		local returnOffset = (-math.cos(-columnPhase) + 1) * halfWidth * keyCunt
-		local offsetX = (-math.cos(phase - columnPhase) + 1) * halfWidth * keyCunt - returnOffset
-		xOffset = xOffset + offsetX * tornado
+		local zero = (-fn(-columnPhase) + 1) * halfWidth * keyCunt
+		local off = (-fn(phase - columnPhase) + 1) * halfWidth * keyCunt - zero
+		if dest == 'x' then xOffset = xOffset + off * val else zOffset = zOffset + off * val end
+	end
+	tornadoAxis('tornado', 'tornadoOffset', 'tornadoPeriod', math.cos, 'x')
+	tornadoAxis('tornadoTan', 'tornadoTanOffset', 'tornadoTanPeriod', safeTan, 'x')
+	tornadoAxis('tornadoZ', 'tornadoZOffset', 'tornadoZPeriod', math.sin, 'z')
+
+	if mod('digital') ~= 0 then
+		local steps = mod('digitalSteps') + 1
+		local ang = math.pi * (curPos + mod('digitalOffset')) / (arrowSize + (mod('digitalPeriod') * arrowSize))
+		xOffset = xOffset + (mod('digital') * halfWidth) * math.floor(0.5 + (steps * math.sin(ang))) / steps
+	end
+	if mod('digitalZ') ~= 0 then
+		local steps = mod('digitalZSteps') + 1
+		local ang = math.pi * (curPos + mod('digitalZOffset')) / (arrowSize + (mod('digitalZPeriod') * arrowSize))
+		zOffset = zOffset + (mod('digitalZ') * halfWidth) * math.floor(0.5 + (steps * math.sin(ang))) / steps
 	end
 
-	-- Tornado Z variant
-	local tornadoZ = getModOnly('tornadoZ', 'x')
-	if tornadoZ ~= 0 then
-		local keyCunt = keyCount - 1
-		local columnPhase = (playerColumn * (math.pi / 3)) + (getModOnly('tornadoZOffset', 'x') or 0)
-		local phase = (curPos / 135) * (1 + (getModOnly('tornadoZPeriod', 'x') or 0))
-		local returnOffset = (-math.sin(-columnPhase) + 1) * halfWidth * keyCunt
-		local offsetZ = (-math.sin(phase - columnPhase) + 1) * halfWidth * keyCunt - returnOffset
-		zOffset = zOffset + offsetZ * tornadoZ
-	end
-
-	-- ============================================
-	-- ZIGZAG (PathModifier.hx - triangle wave)
-	-- ============================================
-	local zigzag = getMod('zigzag', 'x')
-	if zigzag ~= 0 then
-		local period = getModOnly('zigzagPeriod', 'x') or 0
-		local offset = getModOnly('zigzagOffset', 'x') or 0
-		local result = triangle(math.pi * (1 / (period + 1)) * ((curPos + (100 * offset)) / arrowSize))
-		xOffset = xOffset + (zigzag * halfWidth) * result
-	end
-
-	-- Zigzag Z
-	local zigzagZ = getModOnly('zigzagZ', 'x')
-	if zigzagZ ~= 0 then
-		local period = getModOnly('zigzagZPeriod', 'x') or 0
-		local offset = getModOnly('zigzagZOffset', 'x') or 0
-		local result = triangle(math.pi * (1 / (period + 1)) * ((curPos + (100 * offset)) / arrowSize))
-		zOffset = zOffset + (zigzagZ * halfWidth) * result
-	end
-
-	-- ============================================
-	-- SQUARE (PathModifier.hx)
-	-- ============================================
-	local square = getMod('square', 'x')
-	if square ~= 0 then
-		local period = getModOnly('squarePeriod', 'x') or 0
-		local offset = getModOnly('squareOffset', 'x') or 0
-		local cum = math.pi * (curPos + offset) / (arrowSize + (period * arrowSize))
-		xOffset = xOffset + square * halfWidth * squareWave(cum)
-	end
-
-	-- ============================================
-	-- BOUNCE (PathModifier.hx - exact)
-	-- bounce = abs(sin((diff + offset) / (90 + 90*period)))
-	-- ============================================
-	local bounce = getMod('bounce', 'x')
-	if bounce ~= 0 then
-		local offset = getModOnly('bounceOffset', 'x') or 0
-		local period = getModOnly('bouncePeriod', 'x') or 0
-		if period ~= -1 then
-			local b = math.abs(math.sin((curPos + offset) / (90 + 90 * period)))
-			xOffset = xOffset + bounce * halfWidth * b
+	-- ---------- AccelModifier (wave / brake / boost) as Y adjust ----------
+	local wave = mod('wave')
+	local brake = mod('brake')
+	local boost = mod('boost')
+	if wave ~= 0 or brake ~= 0 or boost ~= 0 then
+		local effectHeight = screenH
+		local yAdjust = 0
+		if brake ~= 0 then
+			local sc = scale(curPos, 0, effectHeight, 0, 1)
+			local off = curPos * sc
+			yAdjust = yAdjust + clamp(brake * (off - curPos), -600, 600)
 		end
-	end
-
-	-- Bounce Z
-	local bounceZ = getModOnly('bounceZ', 'x')
-	if bounceZ ~= 0 then
-		local offset = getModOnly('bounceZOffset', 'x') or 0
-		local period = getModOnly('bounceZPeriod', 'x') or 0
-		if period ~= -1 then
-			local b = math.abs(math.sin((curPos + offset) / (90 + 90 * period)))
-			zOffset = zOffset + bounceZ * halfWidth * b
+		if boost ~= 0 then
+			local off = curPos * 1.5 / ((curPos + effectHeight / 1.2) / effectHeight)
+			yAdjust = yAdjust + clamp(boost * (off - curPos), -600, 600)
 		end
+		if mod('wavePeriod') ~= -1 and wave ~= 0 then
+			yAdjust = yAdjust + wave * 40 * math.sin(curPos / ((114 * mod('wavePeriod')) + 114))
+		end
+		yOffset = yOffset + yAdjust
 	end
 
-	-- ============================================
-	-- SAWTOOTH (PathModifier.hx)
-	-- ============================================
-	local saw = getMod('sawtooth', 'x')
-	if saw ~= 0 then
-		local period = (getModOnly('sawtoothPeriod', 'x') or 0) + 1
-		local t = (0.5 / period * curPos) / arrowSize
-		xOffset = xOffset + (saw * arrowSize) * (t - math.floor(t))
-	end
-
-	-- ============================================
-	-- SINE (simple vertical wave)
-	-- ============================================
-	local sine = getMod('sine', 'y')
-	if sine ~= 0 then
-		yOffset = yOffset + sine * math.sin(songPos * 2 * math.pi + playerColumn) * arrowSize * 0.3
-	end
-
-	-- ============================================
-	-- BEAT (BeatModifier.hx - accel/decel envelope, exact fractional)
-	-- ============================================
+	-- ---------- BeatModifier ----------
 	local function beatAmount(offset, mult)
 		local accelTime = 0.2
 		local totalTime = 0.5
 		local b = (beat + accelTime + offset) * (mult + 1)
 		local evenBeat = (math.floor(b) % 2) ~= 0
 		if b < 0 then return 0 end
-		-- Match Haxe: beat -= floor(beat); beat += 1; beat -= floor(beat);
 		b = b - math.floor(b)
 		b = b + 1
 		b = b - math.floor(b)
@@ -2832,40 +3226,52 @@ function runModifiers(data, curPos)
 		if evenBeat then amount = -amount end
 		return 40 * amount
 	end
-
-	local beatX = getMod('beat', 'x')
-	if beatX ~= 0 then
-		local period = getModOnly('beatPeriod', 'x') or 0
-		local factor = beatAmount(getModOnly('beatOffset', 'x') or 0, getModOnly('beatMult', 'x') or 0)
-		xOffset = xOffset + beatX * (factor * math.sin((curPos / ((period * 30) + 30)) + math.pi / 2))
+	if mod('beat') ~= 0 then
+		local factor = beatAmount(mod('beatOffset'), mod('beatMult'))
+		xOffset = xOffset + mod('beat') * (factor * math.sin((curPos / ((mod('beatPeriod') * 30) + 30)) + math.pi * 0.5))
 	end
-	local beatY = getMod('beatY', 'y')
-	if beatY ~= 0 then
-		local period = getModOnly('beatYPeriod', 'x') or 0
-		local factor = beatAmount(getModOnly('beatYOffset', 'x') or 0, getModOnly('beatYMult', 'x') or 0)
-		yOffset = yOffset + beatY * (factor * math.sin((curPos / ((period * 30) + 30)) + math.pi / 2))
+	if mod('beatY') ~= 0 then
+		local factor = beatAmount(mod('beatYOffset'), mod('beatYMult'))
+		yOffset = yOffset + mod('beatY') * (factor * math.sin((curPos / ((mod('beatYPeriod') * 30) + 30)) + math.pi * 0.5))
 	end
-	local beatZ = getModOnly('beatZ', 'x')
-	if beatZ ~= 0 then
-		local period = getModOnly('beatZPeriod', 'x') or 0
-		local factor = beatAmount(getModOnly('beatZOffset', 'x') or 0, getModOnly('beatZMult', 'x') or 0)
-		zOffset = zOffset + beatZ * (factor * math.sin((curPos / ((period * 30) + 30)) + math.pi / 2))
+	if mod('beatZ') ~= 0 then
+		local factor = beatAmount(mod('beatZOffset'), mod('beatZMult'))
+		zOffset = zOffset + mod('beatZ') * (factor * math.sin((curPos / ((mod('beatZPeriod') * 30) + 30)) + math.pi * 0.5))
 	end
 
-	-- ============================================
-	-- REVERSE (improved approximation of ReverseModifier.hx)
-	-- Real engine does a full Y lerp using visualDiff.
-	-- Here we apply a receptor-relative shift + split/alternate/cross.
-	-- ============================================
-	local reverseVal = getMod('reverse', 'y')
-	reverseVal = reverseVal + getModOnly('split', 'x') * ((playerColumn >= keyCount/2) and 1 or 0)
-	reverseVal = reverseVal + getModOnly('alternate', 'x') * ((playerColumn % 2 == 1) and 1 or 0)
-	local first = keyCount / 4
+	-- ---------- SpiralModifier ----------
+	if mod('spiralX') ~= 0 then
+		xOffset = xOffset + curPos * mod('spiralX') * math.cos((mod('spiralXPeriod') + 1) * curPos + mod('spiralXOffset'))
+	end
+	if mod('spiralY') ~= 0 then
+		yOffset = yOffset + curPos * mod('spiralY') * math.sin((mod('spiralYPeriod') + 1) * curPos + mod('spiralYOffset'))
+	end
+	if mod('spiralZ') ~= 0 then
+		zOffset = zOffset + curPos * mod('spiralZ') * math.sin((mod('spiralZPeriod') + 1) * curPos + mod('spiralZOffset'))
+	end
+	if mod('spiral') ~= 0 then
+		xOffset = xOffset + math.sin(curPos * 0.01) * mod('spiral') * 20
+		yOffset = yOffset + math.cos(curPos * 0.01) * mod('spiral') * 20
+	end
+
+	-- ---------- SwapModifier ----------
+	if mod('invert') ~= 0 then
+		xOffset = xOffset + arrowSize * ((playerColumn % 2 == 0) and 1 or -1) * mod('invert')
+	end
+	if mod('flip') ~= 0 then
+		xOffset = xOffset + arrowSize * 2 * (1.5 - playerColumn) * mod('flip')
+	end
+
+	-- ---------- Reverse family (receptor-relative shift) ----------
+	local reverseVal = mod('reverse')
+	if playerColumn >= keyCount / 2 then reverseVal = reverseVal + mod('split') end
+	if (playerColumn % 2) == 1 then reverseVal = reverseVal + mod('alternate') end
+	local first = keyCount * 0.25
 	local last = keyCount - 1 - first
 	if playerColumn >= first and playerColumn <= last then
-		reverseVal = reverseVal + getModOnly('cross', 'x')
+		reverseVal = reverseVal + mod('cross')
 	end
-	if getModOnly('unboundedReverse', 'x') == 0 then
+	if mod('unboundedReverse') == 0 then
 		reverseVal = reverseVal % 2
 		if reverseVal > 1 then reverseVal = 2 - reverseVal end
 	end
@@ -2876,153 +3282,113 @@ function runModifiers(data, curPos)
 		yOffset = yOffset + scrollSwitch * reverseVal
 	end
 
-	-- ============================================
-	-- CONFUSION / ANGLE (ConfusionModifier.hx)
-	-- mainAngle = -((beat * main) % 360)
-	-- ============================================
-	local conf = getMod('confusion', 'angle')
-	local confOff = getMod('confusionOffset', 'angle')
+	-- ---------- Confusion / angle ----------
+	local conf = mod('confusion')
+	local confOff = mod('confusionOffset')
 	if conf ~= 0 or confOff ~= 0 then
 		local mainAngle = -((beat * conf) % 360)
 		angle = angle + mainAngle + confOff
 	end
-
-	-- ============================================
-	-- SPIRAL
-	-- ============================================
-	local spiral = getModOnly('spiral', 'x')
-	if spiral ~= 0 then
-		xOffset = xOffset + math.sin(curPos * 0.01) * spiral * 20
-		yOffset = yOffset + math.cos(curPos * 0.01) * spiral * 20
+	angle = angle + mod('noteAngle') + mod('receptorAngle') + mod('rotateZ') + mod('rotatez')
+	if curPos ~= 0 then
+		angle = angle + mod('twirl') * curPos * 0.5
 	end
 
-	return {xOffset, yOffset, zOffset / 1000, angle}
+	-- ---------- Snap ----------
+	if mod('snapX') ~= 0 then
+		xOffset = lerp(xOffset, coolSnap(xOffset, def1(mod('snapXInterval'))), mod('snapX'))
+	end
+	if mod('snapY') ~= 0 then
+		yOffset = lerp(yOffset, coolSnap(yOffset, def1(mod('snapYInterval'))), mod('snapY'))
+	end
+
+	-- ---------- Alpha / stealth (returned for the render loop) ----------
+	alphaMul = (1 - mod('alpha')) * (1 - mod('noteAlpha'))
+	alphaMul = alphaMul * (1 - mod('stealth')) * (1 - mod('dark'))
+
+	scaleX = math.max(scaleX, 0.02)
+	scaleY = math.max(scaleY, 0.02)
+
+	-- z is stored in "angle units" of dummy sprites at pixel scale; keep pixels here
+	return {xOffset, yOffset, zOffset, angle, scaleX, scaleY, clamp(alphaMul, 0, 1)}
 end
 
 -- ============================================
--- ON CREATE POST - SETUP ALL MODIFIER SPRITES
+-- SPRITE REGISTRY
+-- Dummy sprites hold modifier values on .x / .y / .angle
 -- ============================================
+local GLOBAL_MOD_SPRITES = {
+	'tipsy','drunk','tipsySpeed','drunkSpeed','tipsyOffset','drunkOffset','drunkPeriod','tipsyPeriod',
+	'drunkY','drunkZ','drunkYSpeed','drunkZSpeed','drunkYPeriod','drunkZPeriod','drunkYOffset','drunkZOffset',
+	'tipsyX','tipsyZ','tipsyXSpeed','tipsyZSpeed','tipsyXOffset','tipsyZOffset',
+	'tipZ','tipZSpeed','tipZOffset',
+	'bumpy','bumpyPeriod','bumpyOffset','bumpyX','bumpyY','bumpyXPeriod','bumpyYPeriod','bumpyXOffset','bumpyYOffset',
+	'tornado','tornadoOffset','tornadoPeriod','tornadoZ','tornadoZOffset','tornadoZPeriod',
+	'tornadoTan','tornadoTanOffset','tornadoTanPeriod',
+	'sine','square','squarePeriod','squareOffset',
+	'zigzag','zigzagPeriod','zigzagOffset','zigzagZ','zigzagZPeriod','zigzagZOffset','wiggle',
+	'sawtooth','sawtoothPeriod',
+	'bounce','bounceOffset','bouncePeriod','bounceZ','bounceZOffset','bounceZPeriod',
+	'beat','beatY','beatZ','beatOffset','beatPeriod','beatMult',
+	'beatYOffset','beatYPeriod','beatYMult','beatZOffset','beatZPeriod','beatZMult',
+	'spiral','spiralX','spiralY','spiralZ',
+	'spiralXOffset','spiralXPeriod','spiralYOffset','spiralYPeriod','spiralZOffset','spiralZPeriod',
+	'scale','confusion','confusionOffset','reverse','split','alternate','cross','unboundedReverse',
+	'transformX','transformY','transformZ','x','y','z','xoffset','yoffset','zoffset',
+	'moveX','moveY','moveZ',
+	'brake','boost','wave','wavePeriod',
+	'stealth','dark','hidden','sudden','noteAlpha','alpha',
+	'centered','opponentSwap','flip','invert',
+	'fieldYaw','fieldPitch','fieldRoll','fieldZ','fieldY','fieldX',
+	'stretch','squish','mini','tiny','tinyX','tinyY','tinyx','tinyy',
+	'centerrotateZ','centerrotateX','centerrotateY','rotateX','rotateY','rotateZ',
+	'xmod','xmode','digital','digitalSteps','digitalOffset','digitalPeriod',
+	'digitalZ','digitalZSteps','digitalZOffset','digitalZPeriod',
+	'schmovinDrunk','schmovinDrunkY','schmovinDrunkZ',
+	'schmovinDrunkOffset','schmovinDrunkPeriod','schmovinDrunkSpeed',
+	'schmovinDrunkYOffset','schmovinDrunkYPeriod','schmovinDrunkYSpeed',
+	'schmovinDrunkZOffset','schmovinDrunkZPeriod','schmovinDrunkZSpeed',
+	'schmovinTipsy','schmovinTipsyX','schmovinTipsyZ',
+	'schmovinTipsyOffset','schmovinTipsySpeed','schmovinTipsyXOffset','schmovinTipsyXSpeed',
+	'schmovinTipsyZOffset','schmovinTipsyZSpeed',
+	'schmovinBumpy','schmovinBumpyX','schmovinBumpyY',
+	'schmovinBumpyOffset','schmovinBumpyPeriod','schmovinBumpyXOffset','schmovinBumpyXPeriod',
+	'schmovinBumpyYOffset','schmovinBumpyYPeriod',
+	'haloRadiusX','haloRadiusZ','haloSpeed','camZoom','hudCamAngle','blackScreen',
+	'legacyZAxis','snapX','snapY','snapZ','snapXInterval','snapYInterval','snapZInterval',
+	'noteAngle','receptorAngle','twirl','roll','dizzy'
+}
+
+local COLUMN_MOD_SPRITES = {
+	'strumOffset','scaleMulti','reverse','confusion','confusionOffset',
+	'drunk','tipsy','tornado','sine','square','zigzag','beat',
+	'transformX','transformY','transformZ','stealth','bumpy','bounce','brake','boost'
+}
+
 function onCreatePost()
 	for i = 0, maxStrums - 1 do
-		makeLuaSprite('strumOffset'..i, '', 0, 0)
-		makeLuaSprite('scaleMulti'..i, '', 1, 1)
-		makeLuaSprite('reverse'..i, '', 0, 0)
-		makeLuaSprite('confusion'..i, '', 0, 0)
-		makeLuaSprite('confusionOffset'..i, '', 0, 0)
-		makeLuaSprite('drunk'..i, '', 0, 0)
-		makeLuaSprite('tipsy'..i, '', 0, 0)
-		makeLuaSprite('tornado'..i, '', 0, 0)
-		makeLuaSprite('sine'..i, '', 0, 0)
-		makeLuaSprite('square'..i, '', 0, 0)
-		makeLuaSprite('zigzag'..i, '', 0, 0)
-		makeLuaSprite('beat'..i, '', 0, 0)
-		makeLuaSprite('transformX'..i, '', 0, 0)
-		makeLuaSprite('transformY'..i, '', 0, 0)
-		makeLuaSprite('transformZ'..i, '', 0, 0)
-		makeLuaSprite('stealth'..i, '', 0, 0)
-		makeLuaSprite('bumpy'..i, '', 0, 0)
-		makeLuaSprite('bounce'..i, '', 0, 0)
-		makeLuaSprite('brake'..i, '', 0, 0)
-		makeLuaSprite('boost'..i, '', 0, 0)
+		for _, name in ipairs(COLUMN_MOD_SPRITES) do
+			makeLuaSprite(name .. i, '', 0, 0)
+		end
+		setProperty('scaleMulti' .. i .. '.x', 1)
+		setProperty('scaleMulti' .. i .. '.y', 1)
+	end
+	-- Troll-style transform0X / transform0Y / transform0Z sprites
+	for col = 0, 3 do
+		makeLuaSprite('transform' .. col .. 'X', '', 0, 0)
+		makeLuaSprite('transform' .. col .. 'Y', '', 0, 0)
+		makeLuaSprite('transform' .. col .. 'Z', '', 0, 0)
 	end
 
-	-- Global modifiers (sprite.x / .y / .angle are the three axes)
-	makeLuaSprite('tipsy', '', 0, 0)
-	makeLuaSprite('drunk', '', 0, 0)
-	makeLuaSprite('tipsySpeed', '', 0, 0)
-	makeLuaSprite('drunkSpeed', '', 0, 0)
-	makeLuaSprite('tipsyOffset', '', 0, 0)
-	makeLuaSprite('drunkOffset', '', 0, 0)
-	makeLuaSprite('drunkPeriod', '', 0, 0)
-	makeLuaSprite('tipsyPeriod', '', 0, 0)
+	for _, name in ipairs(GLOBAL_MOD_SPRITES) do
+		makeLuaSprite(name, '', 0, 0)
+	end
 
-	makeLuaSprite('tornado', '', 0, 0)
-	makeLuaSprite('tornadoOffset', '', 0, 0)
-	makeLuaSprite('tornadoPeriod', '', 0, 0)
-	makeLuaSprite('tornadoZ', '', 0, 0)
-	makeLuaSprite('tornadoZOffset', '', 0, 0)
-	makeLuaSprite('tornadoZPeriod', '', 0, 0)
-	makeLuaSprite('sine', '', 0, 0)
-	makeLuaSprite('square', '', 0, 0)
-	makeLuaSprite('zigzag', '', 0, 0)
-	makeLuaSprite('zigzagPeriod', '', 0, 0)
-	makeLuaSprite('zigzagOffset', '', 0, 0)
-	makeLuaSprite('zigzagZ', '', 0, 0)
-	makeLuaSprite('zigzagZPeriod', '', 0, 0)
-	makeLuaSprite('zigzagZOffset', '', 0, 0)
-	makeLuaSprite('squarePeriod', '', 0, 0)
-	makeLuaSprite('squareOffset', '', 0, 0)
-	makeLuaSprite('sawtooth', '', 0, 0)
-	makeLuaSprite('sawtoothPeriod', '', 0, 0)
-	makeLuaSprite('bounce', '', 0, 0)
-	makeLuaSprite('bounceOffset', '', 0, 0)
-	makeLuaSprite('bouncePeriod', '', 0, 0)
-	makeLuaSprite('bounceZ', '', 0, 0)
-	makeLuaSprite('bounceZOffset', '', 0, 0)
-	makeLuaSprite('bounceZPeriod', '', 0, 0)
-	makeLuaSprite('beat', '', 0, 0)
-	makeLuaSprite('beatY', '', 0, 0)
-	makeLuaSprite('beatZ', '', 0, 0)
-	makeLuaSprite('beatOffset', '', 0, 0)
-	makeLuaSprite('beatPeriod', '', 0, 0)
-	makeLuaSprite('beatMult', '', 0, 0)
-	makeLuaSprite('beatYOffset', '', 0, 0)
-	makeLuaSprite('beatYPeriod', '', 0, 0)
-	makeLuaSprite('beatYMult', '', 0, 0)
-	makeLuaSprite('beatZOffset', '', 0, 0)
-	makeLuaSprite('beatZPeriod', '', 0, 0)
-	makeLuaSprite('beatZMult', '', 0, 0)
-	makeLuaSprite('spiral', '', 0, 0)
-	-- TipsyZ + tipZ alias sprites
-	makeLuaSprite('tipsyZ', '', 0, 0)
-	makeLuaSprite('tipsyZSpeed', '', 0, 0)
-	makeLuaSprite('tipsyZOffset', '', 0, 0)
-	makeLuaSprite('tipZ', '', 0, 0)
-	makeLuaSprite('tipZSpeed', '', 0, 0)
-	makeLuaSprite('tipZOffset', '', 0, 0)
-
-	makeLuaSprite('scale', '', 0.7, 0.7)
-	makeLuaSprite('confusion', '', 0, 0)
-	makeLuaSprite('confusionOffset', '', 0, 0)
-	makeLuaSprite('reverse', '', 0, 0)
-	makeLuaSprite('split', '', 0, 0)
-	makeLuaSprite('alternate', '', 0, 0)
-	makeLuaSprite('cross', '', 0, 0)
-	makeLuaSprite('unboundedReverse', '', 0, 0)
-
-	makeLuaSprite('transformX', '', 0, 0)
-	makeLuaSprite('transformY', '', 0, 0)
-	makeLuaSprite('transformZ', '', 0, 0)
-
-	makeLuaSprite('bumpy', '', 0, 0)
-	makeLuaSprite('bumpyPeriod', '', 0, 0)
-	makeLuaSprite('bumpyOffset', '', 0, 0)
-	makeLuaSprite('bumpyX', '', 0, 0)
-	makeLuaSprite('bumpyY', '', 0, 0)
-	makeLuaSprite('brake', '', 0, 0)
-	makeLuaSprite('boost', '', 0, 0)
-	makeLuaSprite('stealth', '', 0, 0)
-	makeLuaSprite('dark', '', 0, 0)
-	makeLuaSprite('hidden', '', 0, 0)
-	makeLuaSprite('sudden', '', 0, 0)
-
-	makeLuaSprite('centered', '', 0, 0)
-	makeLuaSprite('opponentSwap', '', 0, 0)
-	makeLuaSprite('fieldYaw', '', 0, 0)
-	makeLuaSprite('fieldPitch', '', 0, 0)
-	makeLuaSprite('fieldRoll', '', 0, 0)
-	makeLuaSprite('fieldZ', '', 0, 0)
-	makeLuaSprite('fieldY', '', 0, 0)
-	makeLuaSprite('fieldX', '', 0, 0)
-	makeLuaSprite('stretch', '', 0, 0)
-	makeLuaSprite('centerrotateZ', '', 0, 0)
-	makeLuaSprite('alpha', '', 1, 1)
-	makeLuaSprite('xmod', '', 1, 1)
-
-	makeLuaSprite('mini', '', 0, 0)
-	makeLuaSprite('tiny', '', 0, 0)
-	makeLuaSprite('invert', '', 0, 0)
-	makeLuaSprite('flip', '', 0, 0)
+	-- defaults that are not zero
+	setProperty('scale.x', 0.7)
+	setProperty('scale.y', 0.7)
+	setProperty('alpha.x', 1)
+	setProperty('xmod.x', 1)
 
 	if downscroll then
 		scrollSwitch = -520
@@ -3032,7 +3398,7 @@ function onCreatePost()
 end
 
 -- ============================================
--- EVENT HANDLERS (compatible with editor export)
+-- EVENT HANDLERS (editor export)
 -- ============================================
 function onEvent(tag, val1, val2)
 	if tag == 'resetX' then
@@ -3115,16 +3481,19 @@ function flip(time, ease)
 end
 
 -- ============================================
--- VIEWPORT / PERSPECTIVE (simplified PerspectiveModifier)
+-- VIEWPORT / PERSPECTIVE (editor PerspectiveModifier + ZoomModifier mini)
 -- ============================================
 local function applyViewportMods(nx, ny, nz, nAngle)
-	local stretch = getProperty('stretch.x') or 0
+	local stretch = getVal('stretch')
 	if stretch ~= 0 then
 		nx = nx + (nx * stretch)
 	end
 
-	local crZ = (getProperty('centerrotateZ.angle') or 0) * (math.pi / 180)
-	if crZ ~= 0 then
+	local crZ = getVal('centerrotateZ') * TO_RAD
+	local crX = getVal('centerrotateX') * TO_RAD
+	local crY = getVal('centerrotateY') * TO_RAD
+	if crZ ~= 0 or crX ~= 0 or crY ~= 0 then
+		-- Z rotation in screen plane
 		local rotX = nx * math.cos(crZ) - ny * math.sin(crZ)
 		local rotY = nx * math.sin(crZ) + ny * math.cos(crZ)
 		nx = rotX
@@ -3132,7 +3501,7 @@ local function applyViewportMods(nx, ny, nz, nAngle)
 		nAngle = nAngle + (crZ * 180 / math.pi)
 	end
 
-	local fYaw = (getProperty('fieldYaw.angle') or getProperty('fieldYaw.x') or 0) * (math.pi / 180)
+	local fYaw = getVal('fieldYaw') * TO_RAD
 	if fYaw ~= 0 then
 		local rotX = nx * math.cos(fYaw) - nz * math.sin(fYaw)
 		local rotZ = nx * math.sin(fYaw) + nz * math.cos(fYaw)
@@ -3140,7 +3509,7 @@ local function applyViewportMods(nx, ny, nz, nAngle)
 		nz = rotZ
 	end
 
-	local fPitch = (getProperty('fieldPitch.angle') or 0) * (math.pi / 180)
+	local fPitch = getVal('fieldPitch') * TO_RAD
 	if fPitch ~= 0 then
 		local rotY = ny * math.cos(fPitch) - nz * math.sin(fPitch)
 		local rotZ = ny * math.sin(fPitch) + nz * math.cos(fPitch)
@@ -3148,11 +3517,26 @@ local function applyViewportMods(nx, ny, nz, nAngle)
 		nz = rotZ
 	end
 
-	nz = nz + ((getProperty('fieldZ.angle') or getProperty('fieldZ.x') or 0) / 1000)
-	ny = ny + (getProperty('fieldY.y') or getProperty('fieldY.x') or 0)
-	nx = nx + (getProperty('fieldX.x') or 0)
+	local fRoll = getVal('fieldRoll') * TO_RAD
+	if fRoll ~= 0 then
+		local rotX = nx * math.cos(fRoll) - ny * math.sin(fRoll)
+		local rotY = nx * math.sin(fRoll) + ny * math.cos(fRoll)
+		nx = rotX
+		ny = rotY
+	end
 
-	return nx, ny, nz, nAngle
+	nz = nz + getVal('fieldZ')
+	ny = ny + getVal('fieldY')
+	nx = nx + getVal('fieldX')
+
+	-- ZoomModifier name=mini — field zoom about screen center
+	local fieldZoom = 1 - 0.5 * getVal('mini')
+	if fieldZoom ~= 1 then
+		nx = nx * fieldZoom
+		ny = ny * fieldZoom
+	end
+
+	return nx, ny, nz, nAngle, fieldZoom
 end
 
 local function getBaseStrumTransform(data)
@@ -3176,7 +3560,7 @@ local function getBaseStrumTransform(data)
 
 	local centerTargetX = (screenWidth / 2) - ((keyCount / 2 - col - 0.5) * arrowSize)
 
-	local centered = getProperty('centered.x') or 0
+	local centered = getVal('centered')
 	if centered ~= 0 then
 		if isPlayer or isAux then
 			startX = startX + (centerTargetX - startX) * centered
@@ -3186,22 +3570,10 @@ local function getBaseStrumTransform(data)
 		end
 	end
 
-	local swap = getProperty('opponentSwap.x') or 0
+	local swap = getVal('opponentSwap')
 	if swap ~= 0 then
 		local swapTarget = isPlayer and (_G['defaultOpponentStrumX'..col] or 92 + col * arrowSize) or (_G['defaultPlayerStrumX'..col] or 732 + col * arrowSize)
 		startX = startX + (swapTarget - startX) * swap
-	end
-
-	local flipMod = getProperty('flip.x') or 0
-	if flipMod ~= 0 then
-		local flipTarget = (isPlayer and (_G['defaultPlayerStrumX'..(3-col)] or 732 + (3-col)*arrowSize)) or (_G['defaultOpponentStrumX'..(3-col)] or 92 + (3-col)*arrowSize)
-		startX = startX + (flipTarget - startX) * flipMod
-	end
-
-	local invertMod = getProperty('invert.x') or 0
-	if invertMod ~= 0 then
-		local invertTarget = startX + ((col % 2 == 0) and arrowSize or -arrowSize)
-		startX = startX + (invertTarget - startX) * invertMod
 	end
 
 	return (startX - (screenWidth / 2)), (startY - (screenHeight / 2))
@@ -3220,13 +3592,10 @@ function onUpdatePost(elapsed)
 	local zRange = zNear - zFar
 	local tanHalfFOV = math.tan(math.pi / 4)
 
-	local globalDark = getProperty('dark.x') or 0
-	local globalAlpha = getProperty('alpha.x') or 1
-	local scrollMult = getProperty('xmod.x') or 1
+	local scrollMult = getVal('xmod')
 	if scrollMult == 0 then scrollMult = 1 end
 
 	if copyZ then
-		-- ===== STRUMS =====
 		for i = 0, maxStrums - 1 do
 			local baseX, baseY = getBaseStrumTransform(i)
 			local notePosX = baseX
@@ -3237,10 +3606,11 @@ function onUpdatePost(elapsed)
 			local offsets = runModifiers(i, 0)
 			notePosX = notePosX + offsets[1]
 			notePosY = notePosY + offsets[2]
-			notePosZ = notePosZ + offsets[3]
+			notePosZ = notePosZ + (offsets[3] / 1000)
 			noteAngle = noteAngle + offsets[4]
 
-			notePosX, notePosY, notePosZ, noteAngle = applyViewportMods(notePosX, notePosY, notePosZ, noteAngle)
+			local fieldZoom = 1
+			notePosX, notePosY, notePosZ, noteAngle, fieldZoom = applyViewportMods(notePosX, notePosY, notePosZ, noteAngle)
 
 			local zPerspectiveOffset = (notePosZ + (2 * zFar * zNear / zRange))
 			if zPerspectiveOffset == 0 then zPerspectiveOffset = -0.001 end
@@ -3251,18 +3621,15 @@ function onUpdatePost(elapsed)
 			setPropertyFromGroup('strumLineNotes', i, 'y', yPerspective + (screenHeight / 2))
 			setPropertyFromGroup('strumLineNotes', i, 'angle', noteAngle)
 
-			local shrinkMulti = (1 - (getProperty('tiny.x') or 0))
-			local sx = (getProperty('scale.x') or 0.7) * shrinkMulti * (1 / -zPerspectiveOffset) * (getProperty('scaleMulti'..i..'.x') or 1)
-			local sy = (getProperty('scale.y') or 0.7) * shrinkMulti * (1 - (getProperty('mini.x') or 0)) * (1 / -zPerspectiveOffset) * (getProperty('scaleMulti'..i..'.y') or 1)
-
+			local sx = (offsets[5] or 1) * (getProperty('scale.x') or 0.7) * fieldZoom * (1 / -zPerspectiveOffset) * (getProperty('scaleMulti'..i..'.x') or 1)
+			local sy = (offsets[6] or 1) * (getProperty('scale.y') or 0.7) * fieldZoom * (1 / -zPerspectiveOffset) * (getProperty('scaleMulti'..i..'.y') or 1)
 			setPropertyFromGroup('strumLineNotes', i, 'scale.x', sx)
 			setPropertyFromGroup('strumLineNotes', i, 'scale.y', sy)
 
-			local colAlpha = 1 - ((getProperty('stealth.x') or 0) + (getProperty('stealth'..i..'.x') or 0)) - globalDark
-			setPropertyFromGroup('strumLineNotes', i, 'alpha', math.max(0, math.min(1, colAlpha * globalAlpha)))
+			local a = (offsets[7] ~= nil) and offsets[7] or 1
+			setPropertyFromGroup('strumLineNotes', i, 'alpha', clamp(a, 0, 1))
 		end
 
-		-- ===== NOTES =====
 		local noteCount = getProperty('notes.length')
 		local fakeCrochet = (60 / (bpm or 150)) * 1000
 		local stepCrochetMs = fakeCrochet / 4
@@ -3288,27 +3655,12 @@ function onUpdatePost(elapsed)
 
 			local curPos = (getSongPosition() - getPropertyFromGroup('notes', i, 'strumTime')) * getProperty('songSpeed')
 
-			-- Reverse-aware scroll direction
 			local noteDist = 0.45
-			local reverseGlobal = getProperty('reverse.y') or 0
-			local reverseCol = getProperty('reverse'..strumPos..'.y') or 0
-			local rev = reverseGlobal + reverseCol
+			local rev = getVal('reverse') + getVal('reverse'..strumPos)
 			if rev ~= 0 then noteDist = noteDist * (1 - (rev * 2)) end
 
 			local fixedDist = downscroll and noteDist * -1 or noteDist
 			local finalScroll = curPos * fixedDist * scrollMult
-
-			-- Brake / Boost
-			local brake = (getProperty('brake.x') or 0) + (getProperty('brake'..strumPos..'.x') or 0)
-			if brake ~= 0 then
-				local distFactor = curPos / 750
-				finalScroll = finalScroll * (1 - (distFactor * brake))
-			end
-			local boost = (getProperty('boost.x') or 0) + (getProperty('boost'..strumPos..'.x') or 0)
-			if boost ~= 0 then
-				local distFactor = curPos / 750
-				finalScroll = finalScroll * (1 + (distFactor * boost))
-			end
 
 			notePosY = notePosY - finalScroll
 
@@ -3328,12 +3680,13 @@ function onUpdatePost(elapsed)
 			local offsets = runModifiers(strumPos, curPos)
 			notePosX = notePosX + offsets[1]
 			notePosY = notePosY + offsets[2]
-			notePosZ = notePosZ + offsets[3]
+			notePosZ = notePosZ + (offsets[3] / 1000)
 			noteAngle = noteAngle + offsets[4]
 
 			notePosX = notePosX + getPropertyFromGroup('notes', i, 'offsetX')
 
-			notePosX, notePosY, notePosZ, noteAngle = applyViewportMods(notePosX, notePosY, notePosZ, noteAngle)
+			local fieldZoom = 1
+			notePosX, notePosY, notePosZ, noteAngle, fieldZoom = applyViewportMods(notePosX, notePosY, notePosZ, noteAngle)
 
 			local zPerspectiveOffset = (notePosZ + (2 * zFar * zNear / zRange))
 			if zPerspectiveOffset == 0 then zPerspectiveOffset = -0.001 end
@@ -3343,12 +3696,11 @@ function onUpdatePost(elapsed)
 			setPropertyFromGroup('notes', i, 'x', xPerspective + (screenWidth / 2))
 			setPropertyFromGroup('notes', i, 'y', yPerspective + (screenHeight / 2))
 
-			local shrinkMulti = (1 - (getProperty('tiny.x') or 0))
-			local baseScaleX = (getProperty('scale.x') or 0.7) * shrinkMulti * (1 / -zPerspectiveOffset) * (getProperty('scaleMulti'..strumPos..'.x') or 1)
+			local baseScaleX = (offsets[5] or 1) * (getProperty('scale.x') or 0.7) * fieldZoom * (1 / -zPerspectiveOffset) * (getProperty('scaleMulti'..strumPos..'.x') or 1)
 			setPropertyFromGroup('notes', i, 'scale.x', baseScaleX)
 
 			if not isSustainNote then
-				setPropertyFromGroup('notes', i, 'scale.y', (getProperty('scale.y') or 0.7) * shrinkMulti * (1 - (getProperty('mini.x') or 0)) * (1 / -zPerspectiveOffset) * (getProperty('scaleMulti'..strumPos..'.y') or 1))
+				setPropertyFromGroup('notes', i, 'scale.y', (offsets[6] or 1) * (getProperty('scale.y') or 0.7) * fieldZoom * (1 / -zPerspectiveOffset) * (getProperty('scaleMulti'..strumPos..'.y') or 1))
 				setPropertyFromGroup('notes', i, 'angle', noteAngle)
 			else
 				if defaultSusEndScaleY == -1 and isSusEnd then defaultSusEndScaleY = getPropertyFromGroup('notes', i, 'scale.y') end
@@ -3362,9 +3714,6 @@ function onUpdatePost(elapsed)
 
 				local nextPos = curPos + (stepCrochetMs + (stepCrochetMs / getProperty('songSpeed')))
 				local nFinalScroll = nextPos * fixedDist * scrollMult
-				if brake ~= 0 then
-					nFinalScroll = nFinalScroll * (1 - ((nextPos / 750) * brake))
-				end
 
 				local _, nBaseY = getBaseStrumTransform(strumPos)
 				local nextNoteY = nBaseY - nFinalScroll
@@ -3394,8 +3743,8 @@ function onUpdatePost(elapsed)
 				setPropertyFromGroup('notes', i, 'angle', ang)
 			end
 
-			local colAlpha = 1 - ((getProperty('stealth.x') or 0) + (getProperty('stealth'..strumPos..'.x') or 0)) - globalDark
-			setPropertyFromGroup('notes', i, 'alpha', math.max(0, math.min(1, colAlpha * globalAlpha * getPropertyFromGroup('notes', i, 'multAlpha'))))
+			local a = (offsets[7] ~= nil) and offsets[7] or 1
+			setPropertyFromGroup('notes', i, 'alpha', clamp(a * getPropertyFromGroup('notes', i, 'multAlpha'), 0, 1))
 
 			updateHitboxFromGroup('notes', i)
 		end
@@ -3609,34 +3958,61 @@ function exportTrollEngineLua() {
 
 /* ---------- Vanilla Psych export (uses EnhancedModchartTemplate events) ---------- */
 function psychModToSpriteAxis(mod){
-  // Map editor modifier names to (spriteName, axis) used by EnhancedModchartTemplate
-  // axis: 'x' | 'y' | 'angle'
+  // Map editor modifier names to (spriteName, axis) used by EnhancedModchartTemplate v4
+  // axis: 'x' | 'y' | 'angle'  — template getVal() sums all three, but we still
+  // pick the semantically correct axis so tweens/eases land on one property.
   const m = (mod || '').toLowerCase();
-  // explicit overrides
   const map = {
     transformx: ['transformX','x'], transformy: ['transformY','y'], transformz: ['transformZ','angle'],
     x: ['transformX','x'], y: ['transformY','y'], z: ['transformZ','angle'],
     xoffset: ['strumOffset','x'], yoffset: ['strumOffset','y'], zoffset: ['strumOffset','angle'],
-    drunk: ['drunk','x'], drunkz: ['drunk','angle'],
-    tipsy: ['tipsy','y'], tipsyx: ['tipsy','x'], tipsyz: ['tipsy','angle'],
-    bumpy: ['bumpy','y'], bumpyx: ['bumpy','x'],
-    tornado: ['tornado','x'], zigzag: ['zigzag','x'], square: ['square','x'],
-    sine: ['sine','y'], bounce: ['bounce','y'], brake: ['brake','y'], boost: ['boost','y'],
-    wave: ['wave','y'], beat: ['beat','y'], beaty: ['beat','y'],
-    reverse: ['reverse','y'],
-    stealth: ['stealth','x'], sudden: ['stealth','x'], dark: ['dark','x'], alpha: ['alpha','x'],
+    movex: ['moveX','x'], movey: ['moveY','y'], movez: ['moveZ','angle'],
+    drunk: ['drunk','x'], drunkx: ['drunk','x'], drunky: ['drunkY','y'], drunkz: ['drunk','angle'],
+    drunkspeed: ['drunkSpeed','x'], drunkperiod: ['drunkPeriod','x'], drunkoffset: ['drunkOffset','x'],
+    tipsy: ['tipsy','y'], tipsyx: ['tipsyX','x'], tipsyy: ['tipsy','y'], tipsyz: ['tipsyZ','angle'],
+    tipz: ['tipsyZ','angle'], tipzspeed: ['tipZSpeed','x'], tipzoffset: ['tipZOffset','x'],
+    tipsyspeed: ['tipsySpeed','x'], tipsyoffset: ['tipsyOffset','x'],
+    bumpy: ['bumpy','angle'], bumpyx: ['bumpyX','x'], bumpyy: ['bumpyY','y'],
+    bumpyperiod: ['bumpyPeriod','x'], bumpyoffset: ['bumpyOffset','x'],
+    tornado: ['tornado','x'], tornadoperiod: ['tornadoPeriod','x'], tornadooffset: ['tornadoOffset','x'],
+    tornadoz: ['tornadoZ','angle'], tornadotan: ['tornadoTan','x'],
+    zigzag: ['zigzag','x'], wiggle: ['wiggle','x'],
+    zigzagperiod: ['zigzagPeriod','x'], zigzagoffset: ['zigzagOffset','x'],
+    zigzagz: ['zigzagZ','angle'],
+    square: ['square','x'], sawtooth: ['sawtooth','x'],
+    sine: ['sine','y'], bounce: ['bounce','x'], bouncez: ['bounceZ','angle'],
+    brake: ['brake','y'], boost: ['boost','y'], wave: ['wave','y'], waveperiod: ['wavePeriod','x'],
+    beat: ['beat','x'], beaty: ['beatY','y'], beatz: ['beatZ','angle'],
+    beatoffset: ['beatOffset','x'], beatperiod: ['beatPeriod','x'], beatmult: ['beatMult','x'],
+    reverse: ['reverse','y'], split: ['split','x'], alternate: ['alternate','x'], cross: ['cross','x'],
+    stealth: ['stealth','x'], sudden: ['sudden','x'], hidden: ['hidden','x'],
+    dark: ['dark','x'], alpha: ['alpha','x'], notealpha: ['noteAlpha','x'],
     confusion: ['confusion','angle'], confusionoffset: ['confusionOffset','angle'],
-    mini: ['mini','x'], tiny: ['tiny','x'], stretch: ['stretch','x'], squish: ['stretch','y'],
+    mini: ['mini','x'], tiny: ['tiny','x'], tinyx: ['tinyX','x'], tinyy: ['tinyY','y'],
+    stretch: ['stretch','x'], squish: ['squish','x'],
+    scale: ['scale','x'], scalex: ['scale','x'], scaley: ['scale','y'],
     flip: ['flip','x'], invert: ['invert','x'], centered: ['centered','x'],
-    opponentswap: ['opponentSwap','x'], xmod: ['xmod','x'],
+    opponentswap: ['opponentSwap','x'], xmod: ['xmod','x'], xmode: ['xmode','x'],
     fieldyaw: ['fieldYaw','x'], fieldy: ['fieldY','y'], fieldz: ['fieldZ','angle'],
-    fieldroll: ['fieldRoll','angle'], fieldpitch: ['fieldPitch','angle'],
-    spiral: ['spiral','x'],
-    rotatex: ['confusion','x'], rotatey: ['confusion','y'], rotatez: ['confusion','angle'],
-    centerrotatez: ['centerrotateZ','angle'], centerrotatex: ['centerrotateX','x'], centerrotatey: ['centerrotateY','y']
+    fieldx: ['fieldX','x'], fieldroll: ['fieldRoll','angle'], fieldpitch: ['fieldPitch','angle'],
+    spiral: ['spiral','x'], spiralx: ['spiralX','x'], spiraly: ['spiralY','y'], spiralz: ['spiralZ','angle'],
+    rotatex: ['rotateX','x'], rotatey: ['rotateY','y'], rotatez: ['rotateZ','angle'],
+    centerrotatez: ['centerrotateZ','angle'], centerrotatex: ['centerrotateX','x'], centerrotatey: ['centerrotateY','y'],
+    digital: ['digital','x'], digitalz: ['digitalZ','angle'],
+    schmovindrunk: ['schmovinDrunk','x'], schmovintipsy: ['schmovinTipsy','y'], schmovinbumpy: ['schmovinBumpy','angle'],
+    haloradiusx: ['haloRadiusX','x'], haloradiusz: ['haloRadiusZ','angle'], halospeed: ['haloSpeed','x'],
+    camzoom: ['camZoom','x'], hudcamangle: ['hudCamAngle','angle'], blackscreen: ['blackScreen','x'],
+    noteangle: ['noteAngle','angle'], receptorangle: ['receptorAngle','angle'],
+    twirl: ['twirl','angle'], roll: ['roll','x'], snapx: ['snapX','x'], snapy: ['snapY','y']
   };
   if(map[m]) return map[m];
-  // lane-specific: drunk0, reverse1, transform2X etc.
+  // transform0X / transform0Y / transform0Z style (must run before trailing-digit lane match)
+  const tMatch = m.match(/^transform(\d)([xyz])$/);
+  if(tMatch){
+    const axis = tMatch[2] === 'x' ? 'x' : (tMatch[2] === 'y' ? 'y' : 'angle');
+    return ['transform' + tMatch[1] + tMatch[2].toUpperCase(), axis];
+  }
+  // lane-specific: drunk0, reverse1, tipsyZ3 etc.
   const laneMatch = m.match(/^(.*?)(\d)$/);
   if(laneMatch){
     const base = laneMatch[1];
@@ -3644,13 +4020,6 @@ function psychModToSpriteAxis(mod){
     const [spr, ax] = psychModToSpriteAxis(base);
     return [spr + lane, ax];
   }
-  // transform0X style
-  const tMatch = m.match(/^transform(\d)([xyz])$/);
-  if(tMatch){
-    const axis = tMatch[2] === 'x' ? 'x' : (tMatch[2] === 'y' ? 'y' : 'angle');
-    return ['transform' + tMatch[1] + (tMatch[2].toUpperCase()), axis];
-  }
-  // default: treat as X on a sprite of the same name
   return [mod, 'x'];
 }
 
@@ -3666,7 +4035,7 @@ function exportVanillaPsychLua(){
   lua += `-- Generated by faithful Modchart Editor\n`;
   lua += `--\n`;
   lua += `-- REQUIREMENTS:\n`;
-  lua += `--   1. You MUST also have EnhancedModchartTemplate.lua in scripts/\n`;
+  lua += `--   1. You MUST also have EnhancedModchartTemplate.lua (v4) in scripts/\n`;
   lua += `--      (downloaded together with this file from the Vanilla Psych export).\n`;
   lua += `--   2. Psych loads all .lua in scripts/ — template provides runModifiers.\n`;
   lua += `--   3. Events used: setModifierX/Y/Z and easeModifierX/Y/Z.\n`;
@@ -4092,7 +4461,7 @@ function parseModchartScript(text){
   const events = [];
   let ignoredComplex = 0;
 
-  function addSet(stepStr, mod, valStr, playerArg){
+  function addSet(stepStr, mod, valStr, playerArg, api){
     const step = parseNumberish(stepStr);
     const value = parseNumberish(valStr);
     if(!isFinite(step) || !isFinite(value) || !mod) return;
@@ -4104,11 +4473,12 @@ function parseModchartScript(text){
       value,
       target,
       ease: 'quadOut',
-      duration: 0
+      duration: 0,
+      api: api || 'normal'
     });
   }
 
-  function addEase(startStr, endStr, mod, valStr, easeName, playerArg){
+  function addEase(startStr, endStr, mod, valStr, easeName, playerArg, api){
     const start = parseNumberish(startStr);
     const end = parseNumberish(endStr);
     const value = parseNumberish(valStr);
@@ -4123,36 +4493,56 @@ function parseModchartScript(text){
       value,
       target,
       ease: easeList.includes(ease) ? ease : 'quadOut',
-      duration
+      duration,
+      api: api || 'normal'
     });
   }
 
-  // Accept queueSet / qSet / modManager.queueSet (and the *P variants)
-  const reQueueSet = /(?:queueSetP?|qSet)\s*\(\s*([^,]+)\s*,\s*["']([^"']+)["']\s*,\s*([^,\)]+)(?:\s*,\s*([^\)\]]+))?\s*\)/g;
   let m;
+  // Percent API first (queueSetP / qSetP)
+  const reQueueSetP = /(?:queueSetP|qSetP)\s*\(\s*([^,]+)\s*,\s*["']([^"']+)["']\s*,\s*([^,\)]+)(?:\s*,\s*([^\)\]]+))?\s*\)/g;
+  while((m = reQueueSetP.exec(cleaned)) !== null){
+    addSet(m[1], m[2], m[3], m[4], 'percent');
+  }
+  const reQueueSet = /(?:queueSet|qSet)(?!P)\s*\(\s*([^,]+)\s*,\s*["']([^"']+)["']\s*,\s*([^,\)]+)(?:\s*,\s*([^\)\]]+))?\s*\)/g;
   while((m = reQueueSet.exec(cleaned)) !== null){
-    addSet(m[1], m[2], m[3], m[4]);
+    addSet(m[1], m[2], m[3], m[4], 'normal');
   }
 
-  // Accept queueEase / qEase / modManager.queueEase (and the *P variants)
-  const reQueueEase = /(?:queueEaseP?|qEase)\s*\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*["']([^"']+)["']\s*,\s*([^,]+)\s*,\s*["']([^"']+)["'](?:\s*,\s*([^\)\]]+))?\s*\)/g;
+  const reQueueEaseP = /(?:queueEaseP|qEaseP)\s*\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*["']([^"']+)["']\s*,\s*([^,]+)\s*,\s*["']([^"']+)["'](?:\s*,\s*([^\)\]]+))?\s*\)/g;
+  while((m = reQueueEaseP.exec(cleaned)) !== null){
+    addEase(m[1], m[2], m[3], m[4], m[5], m[6], 'percent');
+  }
+  const reQueueEase = /(?:queueEase|qEase)(?!P)\s*\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*["']([^"']+)["']\s*,\s*([^,]+)\s*,\s*["']([^"']+)["'](?:\s*,\s*([^\)\]]+))?\s*\)/g;
   while((m = reQueueEase.exec(cleaned)) !== null){
-    addEase(m[1], m[2], m[3], m[4], m[5], m[6]);
+    addEase(m[1], m[2], m[3], m[4], m[5], m[6], 'normal');
   }
 
   const reSetValue = /(?:^|[^\w.])setValue\s*\(\s*["']([^"']+)["']\s*,\s*([^,\)]+)(?:\s*,\s*([^\)\]]+))?\s*\)/g;
   while((m = reSetValue.exec(cleaned)) !== null){
-    addSet('0', m[1], m[2], m[3]);
+    addSet('0', m[1], m[2], m[3], 'normal');
+  }
+  const reSetPercent = /(?:^|[^\w.])setPercent\s*\(\s*["']([^"']+)["']\s*,\s*([^,\)]+)(?:\s*,\s*([^\)\]]+))?\s*\)/g;
+  while((m = reSetPercent.exec(cleaned)) !== null){
+    addSet('0', m[1], m[2], m[3], 'percent');
   }
 
-  const reMMSet = /modManager\.queueSetP?\s*\(\s*([^,]+)\s*,\s*["']([^"']+)["']\s*,\s*([^,\)]+)(?:\s*,\s*([^\)\]]+))?\s*\)/g;
+  const reMMSetP = /modManager\.queueSetP\s*\(\s*([^,]+)\s*,\s*["']([^"']+)["']\s*,\s*([^,\)]+)(?:\s*,\s*([^\)\]]+))?\s*\)/g;
+  while((m = reMMSetP.exec(cleaned)) !== null){
+    addSet(m[1], m[2], m[3], m[4], 'percent');
+  }
+  const reMMSet = /modManager\.queueSet(?!P)\s*\(\s*([^,]+)\s*,\s*["']([^"']+)["']\s*,\s*([^,\)]+)(?:\s*,\s*([^\)\]]+))?\s*\)/g;
   while((m = reMMSet.exec(cleaned)) !== null){
-    addSet(m[1], m[2], m[3], m[4]);
+    addSet(m[1], m[2], m[3], m[4], 'normal');
   }
 
-  const reMMEase = /modManager\.queueEaseP?\s*\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*["']([^"']+)["']\s*,\s*([^,]+)\s*,\s*["']([^"']+)["'](?:\s*,\s*([^\)\]]+))?\s*\)/g;
+  const reMMEaseP = /modManager\.queueEaseP\s*\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*["']([^"']+)["']\s*,\s*([^,]+)\s*,\s*["']([^"']+)["'](?:\s*,\s*([^\)\]]+))?\s*\)/g;
+  while((m = reMMEaseP.exec(cleaned)) !== null){
+    addEase(m[1], m[2], m[3], m[4], m[5], m[6], 'percent');
+  }
+  const reMMEase = /modManager\.queueEase(?!P)\s*\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*["']([^"']+)["']\s*,\s*([^,]+)\s*,\s*["']([^"']+)["'](?:\s*,\s*([^\)\]]+))?\s*\)/g;
   while((m = reMMEase.exec(cleaned)) !== null){
-    addEase(m[1], m[2], m[3], m[4], m[5], m[6]);
+    addEase(m[1], m[2], m[3], m[4], m[5], m[6], 'normal');
   }
 
   const reMMSetVal = /modManager\.(?:setValue|setCurrentValue)\s*\(\s*["']([^"']+)["']\s*,\s*([^,\)]+)(?:\s*,\s*([^\)\]]+))?\s*\)/g;
@@ -4236,7 +4626,7 @@ function importScript(file){
           step: ev.step,
           value: ev.value,
           mode: ev.type === 'ease' ? 'ease' : 'set',
-          api: 'normal',
+          api: ev.api === 'percent' ? 'percent' : 'normal',
           ease: ev.ease || 'quadOut',
           duration: ev.duration || 0,
           id: state.kfId++
@@ -4331,6 +4721,8 @@ function exportTrollEngineHScript() {
   hscript += `var modMgr = null;\n`;
   hscript += `var qEase = null;\n`;
   hscript += `var qSet = null;\n`;
+  hscript += `var qEaseP = null;\n`;
+  hscript += `var qSetP = null;\n`;
   hscript += `var setValue = null;\n`;
   hscript += `var qFunc = null;\n`;
   hscript += `var qFuncOnce = null;\n`;
@@ -4402,6 +4794,8 @@ function exportTrollEngineHScript() {
   hscript += `    modMgr = game.modManager;\n`;
   hscript += `    qEase = modMgr.queueEase;\n`;
   hscript += `    qSet = modMgr.queueSet;\n`;
+  hscript += `    qEaseP = modMgr.queueEaseP;\n`;
+  hscript += `    qSetP = modMgr.queueSetP;\n`;
   hscript += `    setValue = modMgr.setValue;\n`;
   hscript += `    qFunc = modMgr.queueFunc;\n`;
   hscript += `    qFuncOnce = modMgr.queueFuncOnce;\n`;
@@ -4445,6 +4839,8 @@ function exportTrollEngineHScript() {
   hscript += `        modMgr = game.modManager;\n`;
   hscript += `        qEase = modMgr.queueEase;\n`;
   hscript += `        qSet = modMgr.queueSet;\n`;
+  hscript += `        qEaseP = modMgr.queueEaseP;\n`;
+  hscript += `        qSetP = modMgr.queueSetP;\n`;
   hscript += `        setValue = modMgr.setValue;\n`;
   hscript += `        qFunc = modMgr.queueFunc;\n`;
   hscript += `        qFuncOnce = modMgr.queueFuncOnce;\n`;
@@ -4465,12 +4861,15 @@ function exportTrollEngineHScript() {
     const kfs = t.keyframes.slice().sort((a,b) => a.step - b.step);
     for(const k of kfs){
       const mode = k.mode || 'both';
+      const isP = (k.api || 'normal') === 'percent';
+      const setFn = isP ? 'qSetP' : 'qSet';
+      const easeFn = isP ? 'qEaseP' : 'qEase';
       if(mode === 'set' || mode === 'both'){
-        hscript += `    qSet(${formatNum(k.step)}, "${mod}", ${formatNum(k.value)}${playerArg});\n`;
+        hscript += `    ${setFn}(${formatNum(k.step)}, "${mod}", ${formatNum(k.value)}${playerArg});\n`;
       }
       if((mode === 'ease' || mode === 'both') && (k.duration||0) > 0){
         const endVal = (mode === 'both') ? 0 : k.value;
-        hscript += `    qEase(${formatNum(k.step)}, ${formatNum(k.step + k.duration)}, "${mod}", ${formatNum(endVal)}, "${k.ease || 'quadOut'}"${playerArg});\n`;
+        hscript += `    ${easeFn}(${formatNum(k.step)}, ${formatNum(k.step + k.duration)}, "${mod}", ${formatNum(endVal)}, "${k.ease || 'quadOut'}"${playerArg});\n`;
       }
     }
     hscript += `\n`;
@@ -4902,9 +5301,53 @@ function refreshInspector(){
     if(dom.selKfApi && document.activeElement !== dom.selKfApi) dom.selKfApi.value = k.api || 'normal';
     if(document.activeElement !== dom.selEase) dom.selEase.value = k.ease;
     if(document.activeElement !== dom.inpDuration) dom.inpDuration.value = k.duration;
+    updateKfValueHint(k, t);
+  } else {
+    updateKfValueHint(null, t);
   }
   refreshEventList();
   updateTransportBtn();
+}
+
+const PERCENT_STYLE_MODS = new Set([
+  'drunk','tipsy','bumpy','beat','beaty','beatz','reverse','flip','invert','opponentswap',
+  'alpha','notealpha','stealth','sudden','hidden','dark','blink','tornado','boost','brake',
+  'wave','squish','stretch','mini','tiny','tinyx','tinyy','xmode','xmod','centered','split',
+  'alternate','cross','unboundedreverse','receptorScroll','receptorscroll'
+]);
+
+function isPercentStyleMod(name){
+  if(!name) return false;
+  const n = String(name).toLowerCase();
+  if(PERCENT_STYLE_MODS.has(n)) return true;
+  if(/^tiny\d/.test(n) || /^scale\d/.test(n) || /^reverse\d/.test(n)) return true;
+  if(/^drunk/.test(n) || /^tipsy/.test(n) || /^bumpy/.test(n)) return true;
+  return false;
+}
+
+function updateKfValueHint(k, track){
+  const el = document.getElementById('kf-value-hint');
+  if(!el) return;
+  const modName = (track && track.modifier) || (k && k.mod) || '';
+  if(!k){
+    el.textContent = 'Troll Normal API: 1 = 100% (drunk/reverse/alpha…). transform* = pixels. rotate* = degrees.';
+    el.style.color = '';
+    return;
+  }
+  const api = k.api || 'normal';
+  const val = Number(k.value);
+  if(api === 'percent'){
+    el.textContent = 'Percentage API: '+val+' exports as queueSetP (Troll stores '+(val/100)+'). Preview already divides by 100.';
+    el.style.color = '';
+    return;
+  }
+  if(isPercentStyleMod(modName) && Math.abs(val) >= 8){
+    el.textContent = 'Preview treats '+val+' on '+modName+' as '+(val/100)+' (Troll 100% = 1). Looks huge if left as Normal API '+val+'×. Switch API to Percentage or use 1.';
+    el.style.color = '#ffb74d';
+    return;
+  }
+  el.textContent = 'Normal API: engine value is '+val+' as written. For '+ (modName||'this mod') +', 1 usually means 100%.';
+  el.style.color = '';
 }
 
 function flashStatus(msg){
